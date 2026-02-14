@@ -199,7 +199,7 @@ export function useMoveDocument() {
       documentId: string;
       folderId: string;
     }) => api.updateDocument(documentId, { folder_id: folderId }),
-    onSuccess: async (updatedDocument, variables) => {
+    onSuccess: async (_updatedDocument, variables) => {
       // Refetch the specific document
       await queryClient.refetchQueries({
         queryKey: ['document', variables.documentId],

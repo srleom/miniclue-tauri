@@ -1,4 +1,4 @@
-import * as React from 'react';
+import type * as React from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Pencil, Trash2, FolderOpen } from 'lucide-react';

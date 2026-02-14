@@ -1,7 +1,8 @@
 'use client';
 
 // react
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 
 // icons
 import { Check, X, ChevronRight, Trash2 } from 'lucide-react';

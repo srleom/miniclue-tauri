@@ -53,10 +53,10 @@ export function ModelsList({ providers }: ModelsListProps) {
   );
   const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
 
-  const handleAddApiKey = (provider: Provider) => {
+  const handleAddApiKey = useCallback((provider: Provider) => {
     setSelectedProvider(provider);
     setIsApiKeyDialogOpen(true);
-  };
+  }, []);
 
   const handleApiKeySuccess = () => {
     setIsApiKeyDialogOpen(false);
@@ -274,7 +274,13 @@ export function ModelsList({ providers }: ModelsListProps) {
           </Collapsible>
         );
       }),
-    [state, updateModelPreference.isPending, pendingKey, handleToggle]
+    [
+      state,
+      updateModelPreference.isPending,
+      pendingKey,
+      handleToggle,
+      handleAddApiKey,
+    ]
   );
 
   if (!hasProviders) {

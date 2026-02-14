@@ -96,9 +96,9 @@ pnpm gen:bindings     # Regenerate TypeScript bindings from Rust
 
 # Frontend Quality Checks
 pnpm test:ts          # Type check TypeScript (no emit)
-pnpm lint             # Lint frontend code with ESLint
+pnpm lint             # Lint frontend code with Biome
 pnpm lint:fix         # Auto-fix linting issues
-pnpm format           # Format code with Prettier
+pnpm format           # Format code with Biome
 pnpm format:check     # Check if code is formatted (no write)
 pnpm fix              # Auto-fix lint + format (lint:fix && format)
 pnpm check            # Run all checks: type-check + format-check + lint
@@ -112,6 +112,13 @@ pnpm rust:check       # Run all Rust checks: fmt-check + clippy + test
 # All Checks
 pnpm check:all        # Run all quality checks (frontend + Rust)
 ```
+
+### Biome Rule Coverage Notes
+
+- `react-refresh/only-export-components` from `eslint-plugin-react-refresh` is no longer enforced.
+- `react-hooks/refs`, `react-hooks/set-state-in-effect`, and `react-hooks/incompatible-library` from `eslint-plugin-react-hooks` are not covered by Biome today.
+- `@typescript-eslint/no-unused-vars` underscore ignore semantics may differ from Biome's `noUnusedVariables`.
+- Biome still enforces a strong default React/TypeScript rule set via recommended rules, plus formatting and import sorting.
 
 ---
 

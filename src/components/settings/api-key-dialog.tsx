@@ -92,7 +92,6 @@ export function ApiKeyDialog({
   // Reset password visibility when dialog closes
   useEffect(() => {
     if (!open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowKey(false);
     }
   }, [open]);

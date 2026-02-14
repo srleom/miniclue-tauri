@@ -39,21 +39,25 @@ function toNull<T>(value: T | undefined | null): T | null {
 
 // Helper to convert MessageResponse to Message (parse JSON strings)
 function convertMessageResponse(msg: MessageResponse): Message {
-  let parts;
-  let metadata;
+  let parts: Message['parts'] = [];
+  let metadata: Message['metadata'] = {};
 
   try {
-    parts = JSON.parse(msg.parts);
+    const parsedParts = JSON.parse(msg.parts);
+    if (Array.isArray(parsedParts)) {
+      parts = parsedParts as Message['parts'];
+    }
   } catch (e) {
     console.error('Failed to parse message parts:', e);
-    parts = [];
   }
 
   try {
-    metadata = JSON.parse(msg.metadata);
+    const parsedMetadata = JSON.parse(msg.metadata);
+    if (parsedMetadata && typeof parsedMetadata === 'object') {
+      metadata = parsedMetadata as Message['metadata'];
+    }
   } catch (e) {
     console.error('Failed to parse message metadata:', e);
-    metadata = {};
   }
 
   return {

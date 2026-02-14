@@ -125,7 +125,7 @@ export function SettingsDialog({
                           isActive={activeSection === item.value}
                           onClick={() => setActiveSection(item.value)}
                         >
-                          <button>
+                          <button type="button">
                             <item.icon />
                             <span>{item.name}</span>
                           </button>

@@ -1,4 +1,4 @@
-import { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef } from '@tanstack/react-table';
 import { Link, useNavigate, useLocation } from '@tanstack/react-router';
 import { MoreHorizontal } from 'lucide-react';
 import { ItemActions } from '@/components/common/item-actions';
@@ -64,7 +64,6 @@ export const createColumns = ({
 ];
 
 // Separate component for actions to use hooks
-// eslint-disable-next-line react-refresh/only-export-components
 function ActionsCell({
   document,
   currentFolderId,

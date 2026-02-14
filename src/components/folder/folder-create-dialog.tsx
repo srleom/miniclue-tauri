@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { toast } from 'sonner';
 import { useCreateFolder } from '@/hooks/use-queries';
 import { Button } from '@/components/ui/button';

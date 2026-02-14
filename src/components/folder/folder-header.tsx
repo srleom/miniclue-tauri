@@ -1,4 +1,3 @@
-import * as React from 'react';
 import { Folder, Pencil } from 'lucide-react';
 import { RenameDialog } from '@/components/common/rename-dialog';
 import { RenameForm } from '@/components/common/rename-form';

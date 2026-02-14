@@ -144,15 +144,17 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
       await handleUpload();
 
       // Mark all files as successful
-      uploadFiles.forEach((file) => options.onSuccess(file));
+      uploadFiles.forEach((file) => {
+        options.onSuccess(file);
+      });
     } catch (error) {
       // Mark all files as failed
-      uploadFiles.forEach((file) =>
+      uploadFiles.forEach((file) => {
         options.onError(
           file,
           error instanceof Error ? error : new Error('Upload failed')
-        )
-      );
+        );
+      });
     }
   };
 
@@ -168,7 +170,7 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
     // When a file is removed via the DiceUI component
     setFiles(newFiles);
     // Keep filePaths in sync
-    const newPaths = newFiles.map((file, i) => filePaths[i] || '');
+    const newPaths = newFiles.map((_file, i) => filePaths[i] || '');
     setFilePaths(newPaths.filter(Boolean));
   };
 

@@ -99,9 +99,7 @@ export default function PdfViewer({
   const previousFileUrlRef = useRef(fileUrl);
 
   // Reset PDF-specific state when fileUrl changes (render-phase update)
-  // eslint-disable-next-line react-hooks/refs
   if (previousFileUrlRef.current !== fileUrl) {
-    // eslint-disable-next-line react-hooks/refs
     previousFileUrlRef.current = fileUrl;
     setPdfPageWidth(null);
     setFitToWidthScale(1.0);
@@ -280,7 +278,9 @@ export default function PdfViewer({
 
     // Observe all page elements
     const pageElements = container.querySelectorAll('[data-page-number]');
-    pageElements.forEach((element) => observer.observe(element));
+    pageElements.forEach((element) => {
+      observer.observe(element);
+    });
 
     // Also listen to scroll events for reliable updates
     // This ensures updates happen even when no pages enter/exit the viewport

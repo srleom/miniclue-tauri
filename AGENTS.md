@@ -19,9 +19,9 @@ pnpm preview        # Preview production build locally
 
 # Frontend Quality Checks
 pnpm test:ts        # Type check TypeScript (no emit)
-pnpm lint           # Lint frontend code with ESLint
+pnpm lint           # Lint frontend code with Biome
 pnpm lint:fix       # Auto-fix linting issues
-pnpm format         # Format code with Prettier
+pnpm format         # Format code with Biome
 pnpm format:check   # Check if code is formatted (no write)
 pnpm fix            # Auto-fix lint + format (lint:fix && format)
 pnpm check          # Run all checks: type-check + format-check + lint
@@ -87,9 +87,9 @@ async fn stream_chat(
 ```typescript
 const channel = new Channel<ChatStreamEvent>();
 channel.onmessage = (event) => {
-  if (event.event === 'chunk') appendToMessage(event.data.content);
+  if (event.event === "chunk") appendToMessage(event.data.content);
 };
-await invoke('stream_chat', { chatId, message, onEvent: channel });
+await invoke("stream_chat", { chatId, message, onEvent: channel });
 ```
 
 ### File Storage
