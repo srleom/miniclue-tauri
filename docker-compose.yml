@@ -1,9 +1,0 @@
-name: miniclue
-
-services:
-  pubsub-emulator:
-    container_name: miniclue-pubsub
-    image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
-    command: gcloud beta emulators pubsub start --project=miniclue-gcp-local-sr --host-port=0.0.0.0:8085
-    ports:
-      - "8085:8085"

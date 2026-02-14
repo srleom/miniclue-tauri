@@ -1,86 +1,145 @@
-# CLAUDE.md
+MiniClue is a Tauri desktop app that allows anyone to chat with their PDF documents:
 
-MiniClue is an educational AI platform with three apps:
+- **src/**: Vite + React 19 frontend with TanStack Router
+- **src-tauri/**: Rust backend with SQLite + Tauri IPC
 
-- **apps/web**: Next.js 16 (React 19) frontend
-- **apps/backend**: Go 1.24+ API Gateway
-- **apps/ai**: Python 3.13+ FastAPI microservices
-
-Stack: Supabase (Postgres + Auth), Google Cloud Pub/Sub, OpenAI/Anthropic/Gemini.
+Stack: Local-first (SQLite + sqlite-vec), LLM APIs (OpenAI/Anthropic/Gemini/xAI/DeepSeek).
 
 ## Quick Commands
 
 ```bash
-# Root - Run all services with Conductor
-pnpm conductor:run
+# Development
+pnpm dev            # Start Tauri app in dev mode (Vite + Rust hot reload)
+pnpm dev:fe         # Start Vite dev server only (frontend only)
 
-# Root - Turborepo commands (run from project root)
-pnpm dev      # Start all apps in dev mode
-pnpm build    # Build all apps
-pnpm test     # Run all tests
-pnpm lint     # Lint all apps
-pnpm format   # Format all code
+# Build
+pnpm build          # Build production Tauri app for current platform
+pnpm build:fe       # Build frontend only (TypeScript check + Vite build)
+pnpm preview        # Preview production build locally
 
-# Backend (Go) - run from apps/backend/
-go run ./cmd/app           # Start dev server
-go test ./...              # Run all tests
-make setup-pubsub-local    # Setup Pub/Sub emulator topics/subscriptions
+# Frontend Quality Checks
+pnpm test:ts        # Type check TypeScript (no emit)
+pnpm lint           # Lint frontend code with ESLint
+pnpm lint:fix       # Auto-fix linting issues
+pnpm format         # Format code with Prettier
+pnpm format:check   # Check if code is formatted (no write)
+pnpm fix            # Auto-fix lint + format (lint:fix && format)
+pnpm check          # Run all checks: type-check + format-check + lint
 
-# AI Service (Python) - run from apps/ai/
-poetry run start    # Start FastAPI server
-poetry run pytest   # Run tests
+# Rust (Backend) Quality Checks
+pnpm rust:fmt       # Format Rust code
+pnpm rust:lint      # Lint Rust code (clippy)
+pnpm rust:test      # Run Rust tests
+pnpm rust:check     # Run all Rust checks: fmt-check + clippy + test
+```
 
-# Frontend (Next.js) - run from apps/web/
-pnpm dev           # Start Next.js dev server + file watcher (auto-regenerates types)
-pnpm openapi:all   # Manually regenerate TypeScript types from backend OpenAPI spec
-pnpm test:ts       # Type check
+### Common Workflows
+
+```bash
+# Before committing
+pnpm check:all      # Run all quality checks (frontend + Rust)
+
+# Quick development cycle
+pnpm dev            # Start Tauri app in dev mode
+
+# Fix all auto-fixable issues
+pnpm fix && pnpm rust:fmt
+
+# After adding/changing Tauri commands
+pnpm gen:bindings   # Regenerate TypeScript bindings from Rust
 ```
 
 ## Critical Patterns
 
-### ✅ Type Generation (Huma v2 + HeyAPI)
+### ✅ Tauri IPC (Frontend ↔ Rust Backend)
 
-**For API changes**:
+This project uses **Tauri Specta** for automatic end-to-end type safety. For backend changes:
 
-1. Update Huma handler operations in `internal/api/v1/handler/*_handler.go`
-2. Restart backend → OpenAPI 3.1 spec auto-generated at `/v1/openapi.json`
-3. Run `pnpm openapi` in `apps/web` to regenerate TypeScript types
-4. File watcher auto-regenerates types during `pnpm dev` (polls every 2s)
+1. Define Rust command in `src-tauri/src/commands/*.rs` with `#[tauri::command]` and `#[specta::specta]` macros
+2. Add `Type` derive to all request/response structs
+3. Register command in `src-tauri/src/main.rs` via `.invoke_handler()`
+4. Register command in `src-tauri/src/bindings.rs` for type generation
+5. Run `pnpm gen:bindings` to update TypeScript types (see Common Workflows)
+6. Frontend: import commands from `@/lib/tauri`, types from `@/lib/types` (never `bindings` directly)
+7. Use TanStack Query hooks for data fetching/caching
 
-**Manual type generation** (if needed):
+**Specta type gotchas** (use `#[specta(type = ...)]` on fields):
 
-```bash
-cd apps/web
-pnpm openapi  # Fetches /v1/openapi.json and generates types
+- `i64` → `#[specta(type = i32)]` (TypeScript doesn't support BigInt by default)
+- `serde_json::Value` → `#[specta(type = String)]`
+
+### Chat Streaming: Tauri Channels
+
+Use Tauri's `Channel` API for server-sent events (chat streaming).
+
+```rust
+#[tauri::command]
+async fn stream_chat(
+    state: State<'_, AppState>,
+    chat_id: String,
+    message: String,
+    on_event: Channel<ChatStreamEvent>,
+) -> Result<(), String> {
+    // Stream chunks via: on_event.send(ChatStreamEvent::Chunk { content })
+}
 ```
 
-### Database Schema
+```typescript
+const channel = new Channel<ChatStreamEvent>();
+channel.onmessage = (event) => {
+  if (event.event === 'chunk') appendToMessage(event.data.content);
+};
+await invoke('stream_chat', { chatId, message, onEvent: channel });
+```
 
-- Edit `apps/backend/supabase/schemas/schema.sql` directly
-- **No manual migration files** - I will execute the migrations manually
-- RLS enabled on all tables - always consider `user_id` restrictions
+### File Storage
 
-### Pub/Sub: "Defensive Subscriber" Pattern
-
-**CRITICAL**: Every worker MUST check entity exists before processing. If missing, Ack the message without processing to prevent infinite retries.
-
-Topics: `ingestion` (PDF parsing) → `embedding` (vectors) + `image-analysis` (VLM)
-
-### Auth Flow
-
-Supabase Google OAuth → JWT in cookie → Go Gateway validates → extracts `user_id` for RLS
+- App data directory: `tauri::path::app_data_dir()` → `~/Library/Application Support/com.miniclue.app/` (macOS)
+- PDFs: `{app_data}/documents/{document_id}/original.pdf`
+- Config (API keys): `{app_data}/config.json`
+- SQLite DB: `{app_data}/miniclue.db`
 
 ### Code Organization
 
-- **Backend (Go)**: `internal/{api/v1, service, repository, model, pubsub, middleware}` - Uses Huma v2 for automatic OpenAPI generation
-- **AI (Python)**: `app/{routers, services, schemas, utils}` - SSE streaming for chat
-- **Frontend (Next.js)**: `src/{lib/api, hooks, components}` - Uses auto-generated HeyAPI client
+- **Frontend (React)**: `src/{routes, components, hooks, lib}` - TanStack Router + Query, shadcn/ui
+- **Backend (Rust)**: `src-tauri/src/{commands, services, db, models, pipeline, rag, config.rs}` - Tauri IPC handlers
+
+### assistant-ui
+
+This project uses assistant-ui for chat interfaces.
+
+Documentation: https://www.assistant-ui.com/llms-full.txt
+
+Key patterns:
+
+- Use AssistantRuntimeProvider at the app root
+- Thread component for full chat interface
+- AssistantModal for floating chat widget
+- useChatRuntime hook with AI SDK transport
+
+### Legacy: apps/ Directory
+
+The `apps/` directory contains the old web monorepo (ai/, backend/, web/) and is kept for reference. This is legacy code from before the migration to the Tauri desktop app. You can reference it if needed but do not use it for development.
 
 ## Architecture Notes
 
-**Data Pipeline**: Ingestion worker extracts PDFs → dispatches to embedding (fast) + image-analysis (slow) workers in parallel
+**Data Pipeline**: PDF processing runs in background Rust tasks: parse → chunk → embed → complete
 
-**Message Queue**: Push-based, 60s Ack deadline, exponential backoff (10s-10m), DLQ logs to DB at `/v1/dlq`
+**Processing Flow**: Synchronous function calls in Rust (no message queue) with status updates to SQLite
+
+## Database Schema & Migrations
+
+MiniClue uses **sqlx's migration system** for versioned schema evolution.
+
+**Key Facts**: SQLite at `{app_data}/miniclue.db`, migrations run on app startup. No RLS—single local user. Uses `sqlite-vec` for vector search.
+
+**Creating a Migration**:
+
+1. `cd src-tauri && sqlx migrate add <name>` — creates `migrations/{timestamp}_{name}.sql`
+2. Write SQL in the generated file
+3. Backup DB, then test: `cargo build && pnpm dev` (migrations auto-apply)
+
+**Notes**: Use `IF NOT EXISTS` for safety. Never modify existing migration files after release.
 
 ## Feature/Fix Implementation Flow (MANDATORY)
 
@@ -89,43 +148,34 @@ Supabase Google OAuth → JWT in cookie → Go Gateway validates → extracts `u
 2. **Implement with Tests** (write implementation and tests together):
 
    **If changing database schema:**
-   - Edit `apps/backend/supabase/schemas/schema.sql` directly
-   - Add RLS policies for new tables (consider `user_id` restrictions)
-   - Do NOT create migration files - User will execute migrations manually
+   - Create a new migration file using `sqlx migrate add <name>` from `src-tauri/`
+   - Write SQL in the generated `migrations/{timestamp}_{name}.sql` file
+   - Test migration by deleting local DB and running app
+   - No RLS needed - single local user app
 
-   **If changing backend API:**
-   - Update Repository/Service/Handler code with implementation
-   - Write corresponding tests in `*_test.go` files (handlers/services/repos packages)
-   - Restart backend (OpenAPI spec auto-updates at `/v1/openapi.json`)
-   - From `apps/web/`: run `pnpm openapi` to regenerate TypeScript types
-   - Verify `apps/web/src/lib/api/generated/` files are updated
-
-   **If changing AI service:**
-   - Update schemas/routers in `apps/ai/app/` with implementation
-   - Write corresponding tests in `tests/` directory
-   - Handle Pub/Sub message format changes if needed
+   **If changing backend (Rust):**
+   - Update Command/Service/Repository code with implementation
+   - Write corresponding tests in `src-tauri/src/` test modules
+   - Restart Tauri dev server to reload commands
+   - Run `pnpm gen:bindings` to regenerate TypeScript types from Rust
 
    **If changing frontend:**
-   - Implement UI using generated types from `src/lib/api/generated/`
-   - Use HeyAPI client methods (e.g., `getUser()`, `createCourse()`)
-   - Define manual browser test scenarios for verification using Claude Chrome extension
+   - Implement UI using TanStack Router + Query patterns
+   - Use invoke wrappers from `src/lib/tauri.ts`
+   - Define manual browser test scenarios for verification
 
 3. **Verify Immediately** (run tests and fix if needed):
-   - **Backend**: `cd apps/backend && go test ./...`
-   - **AI**: `cd apps/ai && poetry run pytest`
-   - **Frontend**: `cd apps/web && pnpm test:ts` + execute browser test scenarios
-
-   **Alternatively**: Run `pnpm conductor:run` from root to start all services and verify end-to-end
+   - **Frontend**: `pnpm test:ts`
+   - **Backend**: `pnpm rust:test`
+   - **Manual**: Test in running Tauri app (`pnpm dev`)
 
 4. **Format and Lint** (from project root):
-   - Run `pnpm check` to verify all code is formatted, linted, and tested
+   - **Frontend**: `pnpm check` (type-check + format-check + lint)
+   - **Backend**: `pnpm rust:fmt && pnpm rust:lint`
+   - Or run `pnpm check:all` to verify both frontend and backend
    - Fix all errors if any appear
    - Re-run until no errors remain
 
 5. **Iterate**: If any step fails (tests, formatting, linting), fix and re-verify from that step
 
 6. **Mark complete** only after all tests pass, code is formatted, and no linting errors remain
-
-## Rules
-
-- Always update GitHub Actions workflows and .env.example when changing environment variables.

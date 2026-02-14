@@ -1,7 +1,11 @@
 node_modules
-.turbo
 dist
 build
 .env
 .DS_Store
 .vscode
+miniclue.db
+config.json
+*.tsbuildinfo
+.tanstack
+.ruff_cache

@@ -1,0 +1,30 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+build
+.tanstack
+src/routeTree.gen.ts
+
+# Tauri
+src-tauri/target
+src-tauri/Cargo.lock
+src/lib/bindings.ts
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+
+# IDE
+.vscode
+.idea
+
+# Misc
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+

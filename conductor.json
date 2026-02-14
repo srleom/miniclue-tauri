@@ -1,6 +1,0 @@
-{
-  "scripts": {
-    "setup": "pnpm install && [ ! -L .env ] && ln -sf \"$CONDUCTOR_ROOT_PATH/.env\" .env || true && [ ! -L apps/web/.env ] && ln -sf \"$CONDUCTOR_ROOT_PATH/apps/web/.env\" apps/web/.env || true && [ ! -L apps/backend/.env ] && ln -sf \"$CONDUCTOR_ROOT_PATH/apps/backend/.env\" apps/backend/.env || true && [ ! -L apps/ai/.env ] && ln -sf \"$CONDUCTOR_ROOT_PATH/apps/ai/.env\" apps/ai/.env || true && pnpm infra:bootstrap && pnpm bootstrap",
-    "run": "CONDUCTOR_WEB_PORT=$CONDUCTOR_PORT CONDUCTOR_BE_PORT=$((CONDUCTOR_PORT+1)) CONDUCTOR_AI_PORT=$((CONDUCTOR_PORT+2)) pnpm run conductor:run"
-  }
-}

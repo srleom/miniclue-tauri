@@ -1,0 +1,71 @@
+/* Geist Sans */
+@font-face {
+  font-family: 'Geist Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/geist.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Geist Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/geist-medium.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Geist Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/geist-semibold.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Geist Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/geist-bold.woff2') format('woff2');
+}
+
+/* Geist Mono */
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/geist-mono.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/geist-mono-medium.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/geist-mono-semibold.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/geist-mono-bold.woff2') format('woff2');
+}
+
+/* CSS Variables to match Next.js font optimization */
+:root {
+  --font-geist-sans: 'Geist Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-geist-mono: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+}

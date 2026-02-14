@@ -1,0 +1,302 @@
+use flate2::read::GzDecoder;
+use reqwest::blocking::Client;
+use std::env;
+use std::ffi::OsStr;
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+use tar::Archive;
+use zip::ZipArchive;
+
+const PDFIUM_VERSION: &str = "7543";
+
+struct TargetConfig {
+    id: &'static str,
+    library_filename: &'static str,
+    asset_filenames: &'static [&'static str],
+}
+
+fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
+
+    if let Err(error) = ensure_pdfium_binary() {
+        panic!("Failed to provision Pdfium binary: {error}");
+    }
+
+    tauri_build::build();
+}
+
+fn ensure_pdfium_binary() -> Result<(), String> {
+    let target_os = env::var("CARGO_CFG_TARGET_OS")
+        .map_err(|e| format!("Missing CARGO_CFG_TARGET_OS environment variable: {e}"))?;
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH")
+        .map_err(|e| format!("Missing CARGO_CFG_TARGET_ARCH environment variable: {e}"))?;
+    let manifest_dir = PathBuf::from(
+        env::var("CARGO_MANIFEST_DIR")
+            .map_err(|e| format!("Missing CARGO_MANIFEST_DIR environment variable: {e}"))?,
+    );
+
+    let target = resolve_target_config(&target_os, &target_arch).ok_or_else(|| {
+        format!(
+            "Unsupported target platform {target_os}/{target_arch}. Supported targets: \
+             macOS (aarch64, x86_64), Windows (x86_64), Linux (x86_64)."
+        )
+    })?;
+
+    let target_dir = manifest_dir
+        .join("resources")
+        .join("pdfium")
+        .join(target.id);
+    let target_library_path = target_dir.join(target.library_filename);
+
+    if target_library_path.exists() {
+        println!(
+            "cargo:warning=Using cached Pdfium binary at {}",
+            target_library_path.display()
+        );
+        return Ok(());
+    }
+
+    fs::create_dir_all(&target_dir).map_err(|e| {
+        format!(
+            "Failed to create Pdfium resource directory '{}': {e}",
+            target_dir.display()
+        )
+    })?;
+
+    let out_dir = PathBuf::from(
+        env::var("OUT_DIR").map_err(|e| format!("Missing OUT_DIR environment variable: {e}"))?,
+    );
+    let download_dir = out_dir.join("pdfium-download");
+    let extract_dir = out_dir.join("pdfium-extract");
+
+    if download_dir.exists() {
+        fs::remove_dir_all(&download_dir).map_err(|e| {
+            format!(
+                "Failed to clear temporary download directory '{}': {e}",
+                download_dir.display()
+            )
+        })?;
+    }
+    if extract_dir.exists() {
+        fs::remove_dir_all(&extract_dir).map_err(|e| {
+            format!(
+                "Failed to clear temporary extract directory '{}': {e}",
+                extract_dir.display()
+            )
+        })?;
+    }
+
+    fs::create_dir_all(&download_dir).map_err(|e| {
+        format!(
+            "Failed to create temporary download directory '{}': {e}",
+            download_dir.display()
+        )
+    })?;
+    fs::create_dir_all(&extract_dir).map_err(|e| {
+        format!(
+            "Failed to create temporary extract directory '{}': {e}",
+            extract_dir.display()
+        )
+    })?;
+
+    let base_url = format!(
+        "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F{}",
+        PDFIUM_VERSION
+    );
+    let client = Client::builder()
+        .timeout(Duration::from_secs(180))
+        .build()
+        .map_err(|e| format!("Failed to construct HTTP client for Pdfium download: {e}"))?;
+
+    let mut download_errors = Vec::new();
+
+    for asset_name in target.asset_filenames {
+        let url = format!("{base_url}/{asset_name}");
+        let archive_path = download_dir.join(asset_name);
+
+        match download_file(&client, &url, &archive_path) {
+            Ok(()) => {
+                if let Err(error) = extract_archive(&archive_path, &extract_dir) {
+                    download_errors
+                        .push(format!("Downloaded {url} but extraction failed: {error}"));
+                    continue;
+                }
+
+                if let Some(found_library) =
+                    find_file_recursive(&extract_dir, OsStr::new(target.library_filename))
+                {
+                    fs::copy(&found_library, &target_library_path).map_err(|e| {
+                        format!(
+                            "Failed to copy '{}' to '{}': {e}",
+                            found_library.display(),
+                            target_library_path.display()
+                        )
+                    })?;
+                    println!(
+                        "cargo:warning=Downloaded Pdfium {} for {}/{} to {}",
+                        PDFIUM_VERSION,
+                        target_os,
+                        target_arch,
+                        target_library_path.display()
+                    );
+                    return Ok(());
+                }
+
+                download_errors.push(format!(
+                    "Downloaded {url} but '{}' was not found in extracted contents",
+                    target.library_filename
+                ));
+            }
+            Err(error) => {
+                download_errors.push(format!("{url} => {error}"));
+            }
+        }
+    }
+
+    Err(format!(
+        "Unable to download a compatible Pdfium binary.\n\
+         Target: {}/{}\n\
+         Expected library: {}\n\
+         Tried assets: {}\n\
+         Details:\n{}\n\
+         Build is configured to fail if Pdfium cannot be provisioned.\n\
+         Check network/proxy settings and retry.",
+        target_os,
+        target_arch,
+        target.library_filename,
+        target.asset_filenames.join(", "),
+        download_errors.join("\n")
+    ))
+}
+
+fn resolve_target_config(target_os: &str, target_arch: &str) -> Option<TargetConfig> {
+    match (target_os, target_arch) {
+        ("macos", "aarch64") => Some(TargetConfig {
+            id: "macos-aarch64",
+            library_filename: "libpdfium.dylib",
+            asset_filenames: &["pdfium-mac-arm64.tgz", "pdfium-mac-arm64.zip"],
+        }),
+        ("macos", "x86_64") => Some(TargetConfig {
+            id: "macos-x86_64",
+            library_filename: "libpdfium.dylib",
+            asset_filenames: &["pdfium-mac-x64.tgz", "pdfium-mac-x64.zip"],
+        }),
+        ("windows", "x86_64") => Some(TargetConfig {
+            id: "windows-x86_64",
+            library_filename: "pdfium.dll",
+            asset_filenames: &["pdfium-win-x64.tgz", "pdfium-win-x64.zip"],
+        }),
+        ("linux", "x86_64") => Some(TargetConfig {
+            id: "linux-x86_64",
+            library_filename: "libpdfium.so",
+            asset_filenames: &["pdfium-linux-x64.tgz", "pdfium-linux-x64.zip"],
+        }),
+        _ => None,
+    }
+}
+
+fn download_file(client: &Client, url: &str, destination: &Path) -> Result<(), String> {
+    let mut response = client
+        .get(url)
+        .send()
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Unexpected HTTP status {}", response.status()));
+    }
+
+    let mut file = fs::File::create(destination)
+        .map_err(|e| format!("Failed to create '{}': {e}", destination.display()))?;
+
+    io::copy(&mut response, &mut file)
+        .map_err(|e| format!("Failed to write '{}': {e}", destination.display()))?;
+
+    Ok(())
+}
+
+fn extract_archive(archive_path: &Path, extract_dir: &Path) -> Result<(), String> {
+    let archive_name = archive_path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or_else(|| format!("Invalid archive file name '{}'", archive_path.display()))?;
+
+    if archive_name.ends_with(".tgz") || archive_name.ends_with(".tar.gz") {
+        let archive_file = fs::File::open(archive_path)
+            .map_err(|e| format!("Failed to open '{}': {e}", archive_path.display()))?;
+        let decoder = GzDecoder::new(archive_file);
+        let mut archive = Archive::new(decoder);
+        archive
+            .unpack(extract_dir)
+            .map_err(|e| format!("Failed to unpack tar.gz '{}': {e}", archive_path.display()))?;
+        return Ok(());
+    }
+
+    if archive_name.ends_with(".zip") {
+        let archive_file = fs::File::open(archive_path)
+            .map_err(|e| format!("Failed to open '{}': {e}", archive_path.display()))?;
+        let mut zip_archive = ZipArchive::new(archive_file)
+            .map_err(|e| format!("Failed to read zip '{}': {e}", archive_path.display()))?;
+
+        for index in 0..zip_archive.len() {
+            let mut entry = zip_archive
+                .by_index(index)
+                .map_err(|e| format!("Failed to read zip entry #{index}: {e}"))?;
+            let entry_path = entry.enclosed_name().ok_or_else(|| {
+                format!("Zip entry '{}' has invalid path traversal", entry.name())
+            })?;
+            let output_path = extract_dir.join(entry_path);
+
+            if entry.name().ends_with('/') {
+                fs::create_dir_all(&output_path).map_err(|e| {
+                    format!(
+                        "Failed to create directory '{}': {e}",
+                        output_path.display()
+                    )
+                })?;
+                continue;
+            }
+
+            if let Some(parent_dir) = output_path.parent() {
+                fs::create_dir_all(parent_dir).map_err(|e| {
+                    format!("Failed to create directory '{}': {e}", parent_dir.display())
+                })?;
+            }
+
+            let mut output_file = fs::File::create(&output_path)
+                .map_err(|e| format!("Failed to create '{}': {e}", output_path.display()))?;
+            io::copy(&mut entry, &mut output_file)
+                .map_err(|e| format!("Failed to extract '{}': {e}", output_path.display()))?;
+        }
+
+        return Ok(());
+    }
+
+    Err(format!(
+        "Unsupported archive format for '{}'",
+        archive_path.display()
+    ))
+}
+
+fn find_file_recursive(root: &Path, file_name: &OsStr) -> Option<PathBuf> {
+    if !root.exists() {
+        return None;
+    }
+
+    let entries = fs::read_dir(root).ok()?;
+
+    for entry in entries {
+        let entry = entry.ok()?;
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_file_recursive(&path, file_name) {
+                return Some(found);
+            }
+        } else if path.file_name() == Some(file_name) {
+            return Some(path);
+        }
+    }
+
+    None
+}
