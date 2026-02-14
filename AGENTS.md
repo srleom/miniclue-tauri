@@ -9,44 +9,44 @@ Stack: Local-first (SQLite + sqlite-vec), LLM APIs (OpenAI/Anthropic/Gemini/xAI/
 
 ```bash
 # Development
-pnpm dev            # Start Tauri app in dev mode (Vite + Rust hot reload)
-pnpm dev:fe         # Start Vite dev server only (frontend only)
+bun run dev            # Start Tauri app in dev mode (Vite + Rust hot reload)
+bun run dev:fe         # Start Vite dev server only (frontend only)
 
 # Build
-pnpm build          # Build production Tauri app for current platform
-pnpm build:fe       # Build frontend only (TypeScript check + Vite build)
-pnpm preview        # Preview production build locally
+bun run build          # Build production Tauri app for current platform
+bun run build:fe       # Build frontend only (TypeScript check + Vite build)
+bun run preview        # Preview production build locally
 
 # Frontend Quality Checks
-pnpm test:ts        # Type check TypeScript (no emit)
-pnpm lint           # Lint frontend code with Biome
-pnpm lint:fix       # Auto-fix linting issues
-pnpm format         # Format code with Biome
-pnpm format:check   # Check if code is formatted (no write)
-pnpm fix            # Auto-fix lint + format (lint:fix && format)
-pnpm check          # Run all checks: type-check + format-check + lint
+bun run test:ts        # Type check TypeScript (no emit)
+bun run lint           # Lint frontend code with Biome
+bun run lint:fix       # Auto-fix linting issues
+bun run format         # Format code with Biome
+bun run format:check   # Check if code is formatted (no write)
+bun run fix            # Auto-fix lint + format (lint:fix && format)
+bun run check          # Run all checks: type-check + format-check + lint
 
 # Rust (Backend) Quality Checks
-pnpm rust:fmt       # Format Rust code
-pnpm rust:lint      # Lint Rust code (clippy)
-pnpm rust:test      # Run Rust tests
-pnpm rust:check     # Run all Rust checks: fmt-check + clippy + test
+bun run rust:fmt       # Format Rust code
+bun run rust:lint      # Lint Rust code (clippy)
+bun run rust:test      # Run Rust tests
+bun run rust:check     # Run all Rust checks: fmt-check + clippy + test
 ```
 
 ### Common Workflows
 
 ```bash
 # Before committing
-pnpm check:all      # Run all quality checks (frontend + Rust)
+bun run check:all      # Run all quality checks (frontend + Rust)
 
 # Quick development cycle
-pnpm dev            # Start Tauri app in dev mode
+bun run dev            # Start Tauri app in dev mode
 
 # Fix all auto-fixable issues
-pnpm fix && pnpm rust:fmt
+bun run fix && bun run rust:fmt
 
 # After adding/changing Tauri commands
-pnpm gen:bindings   # Regenerate TypeScript bindings from Rust
+bun run gen:bindings   # Regenerate TypeScript bindings from Rust
 ```
 
 ## Critical Patterns
@@ -59,7 +59,7 @@ This project uses **Tauri Specta** for automatic end-to-end type safety. For bac
 2. Add `Type` derive to all request/response structs
 3. Register command in `src-tauri/src/main.rs` via `.invoke_handler()`
 4. Register command in `src-tauri/src/bindings.rs` for type generation
-5. Run `pnpm gen:bindings` to update TypeScript types (see Common Workflows)
+5. Run `bun run gen:bindings` to update TypeScript types (see Common Workflows)
 6. Frontend: import commands from `@/lib/tauri`, types from `@/lib/types` (never `bindings` directly)
 7. Use TanStack Query hooks for data fetching/caching
 
@@ -137,7 +137,7 @@ MiniClue uses **sqlx's migration system** for versioned schema evolution.
 
 1. `cd src-tauri && sqlx migrate add <name>` — creates `migrations/{timestamp}_{name}.sql`
 2. Write SQL in the generated file
-3. Backup DB, then test: `cargo build && pnpm dev` (migrations auto-apply)
+3. Backup DB, then test: `cargo build && bun run dev` (migrations auto-apply)
 
 **Notes**: Use `IF NOT EXISTS` for safety. Never modify existing migration files after release.
 
@@ -157,7 +157,7 @@ MiniClue uses **sqlx's migration system** for versioned schema evolution.
    - Update Command/Service/Repository code with implementation
    - Write corresponding tests in `src-tauri/src/` test modules
    - Restart Tauri dev server to reload commands
-   - Run `pnpm gen:bindings` to regenerate TypeScript types from Rust
+   - Run `bun run gen:bindings` to regenerate TypeScript types from Rust
 
    **If changing frontend:**
    - Implement UI using TanStack Router + Query patterns
@@ -165,14 +165,14 @@ MiniClue uses **sqlx's migration system** for versioned schema evolution.
    - Define manual browser test scenarios for verification
 
 3. **Verify Immediately** (run tests and fix if needed):
-   - **Frontend**: `pnpm test:ts`
-   - **Backend**: `pnpm rust:test`
-   - **Manual**: Test in running Tauri app (`pnpm dev`)
+   - **Frontend**: `bun run test:ts`
+   - **Backend**: `bun run rust:test`
+   - **Manual**: Test in running Tauri app (`bun run dev`)
 
 4. **Format and Lint** (from project root):
-   - **Frontend**: `pnpm check` (type-check + format-check + lint)
-   - **Backend**: `pnpm rust:fmt && pnpm rust:lint`
-   - Or run `pnpm check:all` to verify both frontend and backend
+   - **Frontend**: `bun run check` (type-check + format-check + lint)
+   - **Backend**: `bun run rust:fmt && bun run rust:lint`
+   - Or run `bun run check:all` to verify both frontend and backend
    - Fix all errors if any appear
    - Re-run until no errors remain
 

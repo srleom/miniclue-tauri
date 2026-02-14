@@ -14,8 +14,8 @@
   },
   "permissions": {
     "ask": [
-      "Bash(pnpm add *)",
-      "Bash(pnpm install *)",
+      "Bash(bun add *)",
+      "Bash(bun install *)",
       "Bash(npm install *)",
       "Bash(npm add *)",
       "Bash(go get *)",
@@ -24,7 +24,7 @@
       "Bash(poetry install *)"
     ],
     "allow": [
-      "Bash(pnpm *)",
+      "Bash(bun *)",
       "Bash(npm *)",
       "Bash(go run *)",
       "Bash(go test *)",
@@ -72,7 +72,7 @@
       "Edit(**/supabase/migrations/**)",
       "Edit(**/.git/**)",
       "Edit(**/package-lock.json)",
-      "Edit(**/pnpm-lock.yaml)",
+      "Edit(**/bun.lock)",
       "Edit(**/poetry.lock)",
       "Edit(**/go.sum)",
       "Write(.env)",
@@ -82,7 +82,7 @@
       "Write(**/secrets/**)",
       "Write(**/.git/**)",
       "Write(**/package-lock.json)",
-      "Write(**/pnpm-lock.yaml)",
+      "Write(**/bun.lock)",
       "Write(**/poetry.lock)",
       "Write(**/go.sum)",
       "Bash(rm -rf *)",

@@ -58,7 +58,7 @@ hartford/
 ### Prerequisites
 
 - **Node.js** >= 20.x
-- **pnpm** >= 10.x
+- **Bun** >= 1.3.x
 - **Rust toolchain** (for Tauri) - Install via [rustup](https://rustup.rs/)
 - **Network access during build** - Pdfium binaries are downloaded automatically at build time
 
@@ -66,10 +66,10 @@ hartford/
 
 ```bash
 # 1. Install dependencies
-pnpm install
+bun install
 
 # 2. Start Tauri app in dev mode (Vite + Rust hot reload)
-pnpm dev
+bun run dev
 ```
 
 That's it! The app will launch with hot reloading enabled.
@@ -83,34 +83,34 @@ If download fails (offline/proxy), the Rust build fails with an explicit error s
 
 ```bash
 # Development
-pnpm dev              # Start Tauri app in dev mode
-pnpm dev:fe           # Start Vite dev server only (frontend)
+bun run dev              # Start Tauri app in dev mode
+bun run dev:fe           # Start Vite dev server only (frontend)
 
 # Build
-pnpm build            # Build production Tauri app for current platform
-pnpm build:fe         # Build frontend only (TypeScript + Vite)
-pnpm preview          # Preview production build locally
+bun run build            # Build production Tauri app for current platform
+bun run build:fe         # Build frontend only (TypeScript + Vite)
+bun run preview          # Preview production build locally
 
 # Type Safety
-pnpm gen:bindings     # Regenerate TypeScript bindings from Rust
+bun run gen:bindings     # Regenerate TypeScript bindings from Rust
 
 # Frontend Quality Checks
-pnpm test:ts          # Type check TypeScript (no emit)
-pnpm lint             # Lint frontend code with Biome
-pnpm lint:fix         # Auto-fix linting issues
-pnpm format           # Format code with Biome
-pnpm format:check     # Check if code is formatted (no write)
-pnpm fix              # Auto-fix lint + format (lint:fix && format)
-pnpm check            # Run all checks: type-check + format-check + lint
+bun run test:ts          # Type check TypeScript (no emit)
+bun run lint             # Lint frontend code with Biome
+bun run lint:fix         # Auto-fix linting issues
+bun run format           # Format code with Biome
+bun run format:check     # Check if code is formatted (no write)
+bun run fix              # Auto-fix lint + format (lint:fix && format)
+bun run check            # Run all checks: type-check + format-check + lint
 
 # Rust (Backend) Quality Checks
-pnpm rust:fmt         # Format Rust code
-pnpm rust:lint        # Lint Rust code (clippy)
-pnpm rust:test        # Run Rust tests
-pnpm rust:check       # Run all Rust checks: fmt-check + clippy + test
+bun run rust:fmt         # Format Rust code
+bun run rust:lint        # Lint Rust code (clippy)
+bun run rust:test        # Run Rust tests
+bun run rust:check       # Run all Rust checks: fmt-check + clippy + test
 
 # All Checks
-pnpm check:all        # Run all quality checks (frontend + Rust)
+bun run check:all        # Run all quality checks (frontend + Rust)
 ```
 
 ### Biome Rule Coverage Notes
@@ -232,7 +232,7 @@ MiniClue uses **sqlx's migration system** for versioned schema evolution. Migrat
 
 1. Create migration: `cd src-tauri && sqlx migrate add <descriptive_name>` → creates `migrations/{timestamp}_{name}.sql`
 2. Write SQL in the generated file
-3. Test with `pnpm dev` (migrations apply on startup)
+3. Test with `bun run dev` (migrations apply on startup)
 4. Use `IF NOT EXISTS` for idempotency; never modify existing migrations after release; test by deleting `{app_data}/miniclue.db` and running the app
 
 ---
@@ -287,7 +287,7 @@ MiniClue uses **Tauri Specta** for automatic end-to-end type safety between Rust
 5. **Generate TypeScript types**:
 
    ```bash
-   pnpm gen:bindings
+   bun run gen:bindings
    ```
 
 6. **Use in frontend** (`src/lib/tauri.ts`):
@@ -404,16 +404,16 @@ let app_data = app.path().app_data_dir()?;
 
 ### Before Committing
 
-1. **Run all checks**: `pnpm check:all`
-2. **Fix issues**: `pnpm fix && pnpm rust:fmt`
-3. **Verify tests**: `pnpm rust:test`
+1. **Run all checks**: `bun run check:all`
+2. **Fix issues**: `bun run fix && bun run rust:fmt`
+3. **Verify tests**: `bun run rust:test`
 
 ### Development Workflow
 
 1. **Make changes** (frontend or backend)
-2. **If backend changed**: `pnpm gen:bindings` to update TypeScript types
-3. **Test manually**: `pnpm dev` (hot reload enabled)
-4. **Run checks**: `pnpm check:all`
+2. **If backend changed**: `bun run gen:bindings` to update TypeScript types
+3. **Test manually**: `bun run dev` (hot reload enabled)
+4. **Run checks**: `bun run check:all`
 5. **Commit**: Follow conventional commit format
 
-For detailed patterns and workflows, see [CLAUDE.md](.claude/CLAUDE.md).
+For detailed patterns and workflows, see [AGENTS.md](AGENTS.md).

@@ -3,7 +3,7 @@
 //! This module exports all Tauri commands and types to TypeScript.
 //! The generated file is written to `../src/lib/bindings.ts`.
 //!
-//! To regenerate bindings: `pnpm gen:bindings`
+//! To regenerate bindings: `bun run gen:bindings`
 
 use specta_typescript::Typescript;
 use tauri_specta::{collect_commands, Builder};
