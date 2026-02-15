@@ -8,7 +8,7 @@
     "ignoreUnknown": true,
     "includes": [
       "src/**",
-      "!!src/components/ui/**",
+      "!!src/components/ui",
       "!!src/lib/bindings.ts",
       "!!src/routeTree.gen.ts"
     ]
