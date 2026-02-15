@@ -301,7 +301,7 @@ export default function PdfViewer({
   return (
     <div className={`flex h-full w-full flex-col ${className}`}>
       {/* Toolbar */}
-      <div className="flex w-full items-center justify-between border-b border-border bg-muted px-4 py-2">
+      <div className="flex h-12 w-full shrink-0 items-center justify-between border-b border-border px-4">
         {/* Page Navigation - Left */}
         <div className="flex items-center gap-2">
           <span className="tabular-nums text-sm font-medium">
@@ -328,7 +328,7 @@ export default function PdfViewer({
                 {scale === 'fit'
                   ? 'Fit'
                   : `${Math.round((scale as number) * 100)}%`}
-                <ChevronDownIcon className="ml-1 h-4 w-4" strokeWidth={1.5} />
+                <ChevronDownIcon className="h-4 w-4" strokeWidth={1.5} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center">
@@ -378,7 +378,7 @@ export default function PdfViewer({
             variant="ghost"
             size="sm"
             onClick={handleFullscreenToggle}
-            className="h-8 px-0 has-[>svg]:px-0"
+            className="h-8 -mr-2 has-[>svg]:px-2"
             aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
           >
             {isFullscreen ? (

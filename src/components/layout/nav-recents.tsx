@@ -53,7 +53,7 @@ export function NavRecents({
         <span>Recents</span>
         <SidebarGroupAction
           asChild
-          className="hover:bg-sidebar-border absolute top-1.5 right-1 group-hover/recents:opacity-100 hover:cursor-pointer data-[state=open]:opacity-100 md:opacity-0"
+          className="hover:bg-sidebar-border absolute top-1.5 right-1 group-hover/recents:opacity-100 data-[state=open]:opacity-100 md:opacity-0"
         >
           <Link to="/" onClick={handleNavigation}>
             <Plus />

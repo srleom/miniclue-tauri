@@ -8,8 +8,7 @@
     },
     "mcp-docs-server": {
       "type": "local",
-      "command": "npx",
-      "args": ["-y", "@assistant-ui/mcp-docs-server"],
+      "command": ["npx", "-y", "@assistant-ui/mcp-docs-server"],
       "enabled": true,
       "environment": {}
     }

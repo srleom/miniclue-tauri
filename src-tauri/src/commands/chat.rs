@@ -111,10 +111,23 @@ pub async fn list_messages(
 #[derive(Serialize, Clone, Debug, Type)]
 #[serde(tag = "event")]
 pub enum ChatStreamEvent {
-    UserMessageSaved { message_id: String },
-    Chunk { content: String },
-    Done { message_id: String },
-    Error { message: String },
+    UserMessageSaved {
+        message_id: String,
+    },
+    Chunk {
+        content: String,
+    },
+    Done {
+        message_id: String,
+    },
+    TitleUpdated {
+        chat_id: String,
+        title: String,
+        updated_at: String,
+    },
+    Error {
+        message: String,
+    },
 }
 
 #[derive(serde::Deserialize, Type)]
@@ -123,6 +136,35 @@ pub struct StreamChatRequest {
     pub chat_id: String,
     pub message: String, // User's message text
     pub model: String,   // Selected model
+}
+
+fn extract_first_text_from_parts(parts_json: &str) -> String {
+    let parts_value: serde_json::Value =
+        serde_json::from_str(parts_json).unwrap_or(serde_json::Value::Array(vec![]));
+    parts_value
+        .as_array()
+        .and_then(|arr| arr.first())
+        .and_then(|part| part.get("text"))
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn truncate_generated_title(raw_title: &str) -> String {
+    let trimmed = raw_title.trim();
+    if trimmed.is_empty() {
+        return "New Chat".to_string();
+    }
+
+    if trimmed.chars().count() > rag::prompts::TITLE_MAX_LENGTH {
+        let shortened: String = trimmed
+            .chars()
+            .take(rag::prompts::TITLE_MAX_LENGTH - 3)
+            .collect();
+        format!("{}...", shortened)
+    } else {
+        trimmed.to_string()
+    }
 }
 
 #[tauri::command]
@@ -178,38 +220,19 @@ pub async fn stream_chat(
 
     let history: Vec<rag::query_rewriter::Message> = messages
         .iter()
-        .map(|m| {
-            // Extract text from parts JSON
-            let parts_value: serde_json::Value =
-                serde_json::from_str(&m.parts).unwrap_or(serde_json::Value::Array(vec![]));
-            let text = parts_value
-                .as_array()
-                .and_then(|arr| arr.first())
-                .and_then(|part| part.get("text"))
-                .and_then(|t| t.as_str())
-                .unwrap_or("")
-                .to_string();
-
-            rag::query_rewriter::Message {
-                role: m.role.clone(),
-                content: text,
-            }
+        .map(|m| rag::query_rewriter::Message {
+            role: m.role.clone(),
+            content: extract_first_text_from_parts(&m.parts),
         })
         .collect();
 
     // 3. Rewrite query with history context (optional - use original if rewriting fails)
-    let rewritten_query = rag::rewrite_query(
-        &user_message,
-        &history,
-        &api_key,
-        "gemini-2.0-flash-lite",
-        llm::get_provider_base_url("gemini-2.0-flash-lite"),
-    )
-    .await
-    .unwrap_or_else(|e| {
-        log::warn!("Query rewriting failed: {}, using original query", e);
-        user_message.clone()
-    });
+    let rewritten_query = rag::rewrite_query_streaming(&user_message, &history, &api_key)
+        .await
+        .unwrap_or_else(|e| {
+            log::warn!("Query rewriting failed: {}, using original query", e);
+            user_message.clone()
+        });
 
     // 4. Retrieve relevant chunks via RAG
     let chunks = rag::retrieve_chunks(&rewritten_query, &document_id, &db, &api_key, 5)
@@ -277,12 +300,23 @@ pub async fn stream_chat(
         let db_clone = db.clone();
         let chat_id_clone = chat_id.clone();
         let model_clone = model.clone();
+        let on_event_clone = on_event.clone();
 
         tauri::async_runtime::spawn(async move {
-            if let Err(e) =
-                generate_chat_title(&db_clone, &chat_id_clone, &api_key, &model_clone).await
-            {
-                log::error!("Failed to generate chat title: {}", e);
+            match generate_chat_title(&db_clone, &chat_id_clone, &api_key, &model_clone).await {
+                Ok(Some((title, updated_at))) => {
+                    if let Err(e) = on_event_clone.send(ChatStreamEvent::TitleUpdated {
+                        chat_id: chat_id_clone,
+                        title,
+                        updated_at,
+                    }) {
+                        log::warn!("Failed to send title update event: {}", e);
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    log::error!("Failed to generate chat title: {}", e);
+                }
             }
         });
     }
@@ -295,59 +329,92 @@ async fn generate_chat_title(
     chat_id: &str,
     api_key: &str,
     model: &str,
-) -> Result<(), ApiError> {
+) -> Result<Option<(String, String)>, ApiError> {
     // Get first 2 messages
     let messages = db::chat::list_messages(db, chat_id, 2).await?;
 
     if messages.len() != 2 {
-        return Ok(()); // Not ready yet
+        return Ok(None); // Not ready yet
     }
 
-    // Build messages for title generation
-    let mut title_messages = vec![];
-
-    for msg in &messages {
-        let parts_value: serde_json::Value =
-            serde_json::from_str(&msg.parts).unwrap_or(serde_json::Value::Array(vec![]));
-        let text = parts_value
-            .as_array()
-            .and_then(|arr| arr.first())
-            .and_then(|part| part.get("text"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        title_messages.push(rag::query_rewriter::Message {
-            role: msg.role.clone(),
-            content: text,
-        });
-    }
-
-    // Add system message for title generation
-    let system_message = rag::query_rewriter::Message {
-        role: "system".to_string(),
-        content: "Generate a concise title (max 80 chars) for this conversation. Return only the title, no quotes or explanations.".to_string(),
+    let first_user = messages.iter().find(|m| m.role == "user");
+    let first_assistant = messages.iter().find(|m| m.role == "assistant");
+    let (Some(first_user), Some(first_assistant)) = (first_user, first_assistant) else {
+        return Ok(None);
     };
 
-    title_messages.insert(0, system_message);
+    let title_context = rag::prompts::build_title_conversation_context(
+        &extract_first_text_from_parts(&first_user.parts),
+        &extract_first_text_from_parts(&first_assistant.parts),
+    );
+
+    // Build messages for title generation in legacy format: [system, user]
+    let title_messages = vec![
+        rag::query_rewriter::Message {
+            role: "system".to_string(),
+            content: rag::prompts::title_system_prompt(),
+        },
+        rag::query_rewriter::Message {
+            role: "user".to_string(),
+            content: title_context,
+        },
+    ];
 
     // Generate title
+    log::info!(
+        "[generate_chat_title] Calling llm::generate_title for chat_id={}",
+        chat_id
+    );
+
     let title = llm::generate_title(title_messages, api_key.to_string(), model.to_string())
         .await
-        .map_err(|e| ApiError::internal_error(e.to_string()))?;
+        .map_err(|e| {
+            log::error!("[generate_chat_title] Title generation failed: {}", e);
+            ApiError::internal_error(e.to_string())
+        })?;
 
-    // Update chat title
-    let truncated_title = if title.len() > 80 {
-        &title[..80]
-    } else {
-        &title
-    };
+    log::info!("[generate_chat_title] Generated title: \"{}\"", title);
 
-    sqlx::query("UPDATE chats SET title = ?, updated_at = datetime('now') WHERE id = ?")
-        .bind(truncated_title)
-        .bind(chat_id)
-        .execute(db)
-        .await?;
+    // Validate and truncate title to match legacy behavior.
+    let truncated_title = truncate_generated_title(&title);
 
-    Ok(())
+    let (saved_title, updated_at): (String, String) = sqlx::query_as(
+        "UPDATE chats SET title = ?, updated_at = datetime('now') WHERE id = ? \
+         RETURNING title, updated_at",
+    )
+    .bind(&truncated_title)
+    .bind(chat_id)
+    .fetch_one(db)
+    .await?;
+
+    log::info!(
+        "[generate_chat_title] Successfully updated title in database for chat_id={}",
+        chat_id
+    );
+
+    Ok(Some((saved_title, updated_at)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_first_text_from_parts() {
+        let json = r#"[{"type":"text","text":"hello world"}]"#;
+        assert_eq!(extract_first_text_from_parts(json), "hello world");
+    }
+
+    #[test]
+    fn test_truncate_generated_title_uses_ellipsis_at_eighty_chars() {
+        let long = "a".repeat(120);
+        let title = truncate_generated_title(&long);
+        assert_eq!(title.len(), rag::prompts::TITLE_MAX_LENGTH);
+        assert!(title.ends_with("..."));
+    }
+
+    #[test]
+    fn test_truncate_generated_title_empty_fallback() {
+        assert_eq!(truncate_generated_title("   "), "New Chat");
+    }
 }

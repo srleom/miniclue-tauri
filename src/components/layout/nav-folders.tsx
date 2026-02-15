@@ -1,4 +1,8 @@
+import { Link, useLocation } from '@tanstack/react-router';
+import { ChevronRight, Folder, MoreHorizontal, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { ItemActions } from '@/components/common/item-actions';
+import { Badge } from '@/components/ui/badge';
 import {
   Collapsible,
   CollapsibleContent,
@@ -15,12 +19,8 @@ import {
   SidebarMenuSub,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { Badge } from '@/components/ui/badge';
-import NavDocument from './nav-document';
-import { ChevronRight, Folder, MoreHorizontal, Plus } from 'lucide-react';
-import { Link, useLocation } from '@tanstack/react-router';
-import { ItemActions } from '@/components/common/item-actions';
 import { cn } from '@/lib/utils';
+import NavDocument from './nav-document';
 
 type ActionResponse<T> = {
   data?: T;
@@ -87,7 +87,7 @@ export function NavFolders({
       <SidebarGroupLabel className="peer group/folders hover:bg-sidebar-accent relative flex w-full items-center justify-between pr-1">
         <span>Folders</span>
         <SidebarGroupAction
-          className="hover:bg-sidebar-border absolute top-1.5 right-1 group-hover/folders:opacity-100 hover:cursor-pointer data-[state=open]:opacity-100 md:opacity-0"
+          className="hover:bg-sidebar-border absolute top-1.5 right-1 group-hover/folders:opacity-100 data-[state=open]:opacity-100 md:opacity-0"
           onClick={async () => {
             const result = await createUntitledFolder();
             if (result.error) {

@@ -102,13 +102,17 @@ function AppLayout() {
   }, [queryClient]);
 
   return (
-    <div className="flex h-dvh w-screen overflow-hidden">
+    <div className="relative flex h-dvh w-screen overflow-hidden">
       <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
         <AppSidebar />
         <SidebarInset className="flex min-h-0 min-w-0 flex-1 flex-col">
           <Outlet />
         </SidebarInset>
       </SidebarProvider>
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute top-0 right-0 left-0 z-20 border-border border-t"
+      />
     </div>
   );
 }

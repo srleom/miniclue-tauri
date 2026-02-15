@@ -237,6 +237,15 @@ function convertChatStreamEvent(
     return { event: 'chunk', data: { content: event.content } };
   } else if (event.event === 'Done') {
     return { event: 'done', data: { message_id: event.message_id } };
+  } else if (event.event === 'TitleUpdated') {
+    return {
+      event: 'title_updated',
+      data: {
+        chat_id: event.chat_id,
+        title: event.title,
+        updated_at: event.updated_at,
+      },
+    };
   } else if (event.event === 'Error') {
     return { event: 'error', data: { error: event.message } };
   }

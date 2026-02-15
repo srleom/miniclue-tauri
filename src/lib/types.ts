@@ -49,6 +49,10 @@ export type ChatStreamEvent =
   | { event: 'user_message_saved'; data: { message_id: string } }
   | { event: 'chunk'; data: { content: string } }
   | { event: 'done'; data: { message_id: string } }
+  | {
+      event: 'title_updated';
+      data: { chat_id: string; title: string; updated_at: string };
+    }
   | { event: 'error'; data: { error: string } };
 
 export type DocumentStatusChangedEvent = {

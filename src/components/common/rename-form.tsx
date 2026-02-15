@@ -37,12 +37,12 @@ export function RenameForm({
       </div>
       <DialogFooter className="flex-row justify-start gap-2 sm:justify-end">
         <DialogClose asChild>
-          <Button variant="outline" className="w-auto cursor-pointer">
+          <Button variant="outline" className="w-auto">
             Cancel
           </Button>
         </DialogClose>
         <DialogClose asChild>
-          <Button type="submit" className="w-auto cursor-pointer">
+          <Button type="submit" className="w-auto">
             Save
           </Button>
         </DialogClose>

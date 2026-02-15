@@ -9,3 +9,11 @@ config.json
 *.tsbuildinfo
 .tanstack
 .ruff_cache
+apps
+.codex
+.cursor
+.gemini
+.mcp.json
+.opencode.json
+/assistant-ui/
+opencode.json

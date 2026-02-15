@@ -1,17 +1,11 @@
-import { useEffect, useState } from 'react';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { useDocument, useFolder } from '../../hooks/use-queries';
-import { FileText, Loader2 } from 'lucide-react';
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from '@/components/ui/resizable';
-import PdfViewer from '@/components/document/pdf-viewer';
-import { getDocumentPdfPath } from '@/lib/tauri';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { FileText, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { SidebarTrigger } from '@/components/ui/sidebar';
+import { ChatPanel } from '@/components/document/chat-panel';
+import DocumentHeader from '@/components/document/document-header';
+import PdfViewer from '@/components/document/pdf-viewer';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -19,18 +13,30 @@ import {
   BreadcrumbList,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from '@/components/ui/resizable';
 import { Separator } from '@/components/ui/separator';
-import DocumentHeader from '@/components/document/document-header';
+import { SidebarTrigger } from '@/components/ui/sidebar';
+import { getDocumentPdfPath } from '@/lib/tauri';
+import { useDocument, useFolder } from '../../hooks/use-queries';
 
 export const Route = createFileRoute('/_app/document/$documentId')({
   component: DocumentPage,
 });
 
-function DocumentPdfContent({ documentId }: { documentId: string }) {
+function DocumentPdfContent({
+  documentId,
+  onFullscreenChange,
+}: {
+  documentId: string;
+  onFullscreenChange: (isFullscreen: boolean) => void;
+}) {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [_totalPages, setTotalPages] = useState(0);
-  const [_isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     const loadPdf = async () => {
@@ -56,7 +62,7 @@ function DocumentPdfContent({ documentId }: { documentId: string }) {
           pageNumber={currentPage}
           onPageChange={setCurrentPage}
           onDocumentLoad={setTotalPages}
-          onFullscreenChange={setIsFullscreen}
+          onFullscreenChange={onFullscreenChange}
         />
       ) : (
         <div className="flex h-full items-center justify-center bg-gray-100 dark:bg-gray-900">
@@ -74,6 +80,7 @@ function DocumentPage() {
   const { documentId } = Route.useParams();
   const { data: document } = useDocument(documentId);
   const { data: folder } = useFolder(document?.folder_id ?? '');
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   if (!document) {
     return (
@@ -83,23 +90,12 @@ function DocumentPage() {
     );
   }
 
-  const isProcessing =
-    document.status === 'parsing' ||
-    document.status === 'processing' ||
-    document.status === 'pending_processing';
-
-  const getStatusBadgeClass = (status: string) => {
-    if (status === 'complete') return 'bg-green-100 text-green-700';
-    if (status === 'failed') return 'bg-red-100 text-red-700';
-    return 'bg-yellow-100 text-yellow-700';
-  };
-
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex h-16 shrink-0 items-center justify-between border-b">
+      <div className="flex h-14 shrink-0 items-center border-b">
         <div className="flex items-center gap-2 px-4">
-          <SidebarTrigger className="-ml-1 hover:cursor-pointer" />
+          <SidebarTrigger className="-ml-1" />
           <Separator
             orientation="vertical"
             className="mr-2 data-[orientation=vertical]:h-4"
@@ -130,37 +126,26 @@ function DocumentPage() {
             </BreadcrumbList>
           </Breadcrumb>
         </div>
-        <div className="flex items-center gap-2 px-4">
-          {isProcessing && (
-            <div className="flex items-center gap-2 text-sm text-yellow-600">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Processing...
-            </div>
-          )}
-          <span
-            className={`rounded-full px-3 py-1 text-sm ${getStatusBadgeClass(
-              document.status
-            )}`}
-          >
-            {document.status}
-          </span>
-        </div>
       </div>
 
       {/* Main Content: PDF + Right Panel */}
       <div className="flex-1 overflow-hidden">
         <ResizablePanelGroup direction="horizontal">
-          <ResizablePanel defaultSize={50} minSize={30}>
-            <DocumentPdfContent key={documentId} documentId={documentId} />
+          <ResizablePanel defaultSize={isFullscreen ? 100 : 50} minSize={30}>
+            <DocumentPdfContent
+              key={documentId}
+              documentId={documentId}
+              onFullscreenChange={setIsFullscreen}
+            />
           </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={50} minSize={30}>
-            <div className="flex h-full items-center justify-center bg-gray-50 dark:bg-gray-900">
-              <div className="text-center text-muted-foreground">
-                <p className="text-lg">Coming soon…</p>
-              </div>
-            </div>
-          </ResizablePanel>
+          {!isFullscreen && (
+            <>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={50} minSize={30}>
+                <ChatPanel documentId={documentId} status={document.status} />
+              </ResizablePanel>
+            </>
+          )}
         </ResizablePanelGroup>
       </div>
     </div>
