@@ -32,7 +32,7 @@ export default function DocumentHeader({
           trigger={
             <button
               type="button"
-              className="text-muted-foreground ml-1 cursor-pointer opacity-100 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+              className="text-muted-foreground ml-1 opacity-100 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100"
             >
               <Pencil size={12} />
             </button>

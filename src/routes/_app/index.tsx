@@ -19,9 +19,9 @@ function HomePage() {
 
   return (
     <>
-      <header className="flex h-16 shrink-0 items-center justify-between gap-2">
+      <header className="flex h-14 shrink-0 items-center justify-between gap-2">
         <div className="flex items-center gap-2 px-4">
-          <SidebarTrigger className="-ml-1 hover:cursor-pointer" />
+          <SidebarTrigger className="-ml-1" />
         </div>
       </header>
       <div className="mx-auto flex w-full flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0">

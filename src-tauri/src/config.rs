@@ -16,12 +16,7 @@ pub struct AppConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppSettings {
-    #[serde(default = "default_theme")]
-    pub theme: String,
-}
-
-fn default_theme() -> String {
-    "system".to_string()
+    // Settings can be added here in the future
 }
 
 impl AppConfig {

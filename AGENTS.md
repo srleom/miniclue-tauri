@@ -108,14 +108,9 @@ await invoke("stream_chat", { chatId, message, onEvent: channel });
 
 This project uses assistant-ui for chat interfaces.
 
+An example is given in the assistant-ui folder. Refer to it if necessary.
+
 Documentation: https://www.assistant-ui.com/llms-full.txt
-
-Key patterns:
-
-- Use AssistantRuntimeProvider at the app root
-- Thread component for full chat interface
-- AssistantModal for floating chat widget
-- useChatRuntime hook with AI SDK transport
 
 ### Legacy: apps/ Directory
 

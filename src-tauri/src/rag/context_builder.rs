@@ -1,3 +1,4 @@
+use super::prompts::{build_lecture_context_message, CHAT_RESPONSE_SYSTEM_PROMPT};
 use super::query_rewriter::Message;
 use super::retriever::RetrievedChunk;
 
@@ -14,30 +15,16 @@ pub fn build_rag_context(
     // 1. System message
     let system_message = Message {
         role: "system".to_string(),
-        content: "You are an expert AI University Tutor. Answer questions based on the provided document content. \
-                  Be concise, accurate, and cite specific pages when relevant. \
-                  If you don't know the answer based on the document content, say so."
-            .to_string(),
+        content: CHAT_RESPONSE_SYSTEM_PROMPT.to_string(),
     };
     messages.push(system_message);
 
-    // 2. RAG context message (formatted as XML for clarity)
-    if !chunks.is_empty() {
-        let mut context_content = String::from("<document_context>\n");
-        for chunk in chunks {
-            context_content.push_str(&format!(
-                "<chunk page=\"{}\">\n{}\n</chunk>\n",
-                chunk.page_number, chunk.text
-            ));
-        }
-        context_content.push_str("</document_context>");
-
-        let context_message = Message {
-            role: "system".to_string(),
-            content: context_content,
-        };
-        messages.push(context_message);
-    }
+    // 2. RAG context message (legacy format)
+    let context_message = Message {
+        role: "user".to_string(),
+        content: build_lecture_context_message(chunks),
+    };
+    messages.push(context_message);
 
     // 3. Conversation history (last N turns)
     let history_messages: Vec<Message> = history
@@ -58,4 +45,36 @@ pub fn build_rag_context(
     messages.push(user_message);
 
     messages
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_rag_context_uses_legacy_prompt_and_context_shape() {
+        let chunks = vec![RetrievedChunk {
+            chunk_id: "c1".to_string(),
+            text: "Binary search runs in O(log n).".to_string(),
+            page_number: 12,
+            distance: 0.1,
+        }];
+        let history = vec![Message {
+            role: "assistant".to_string(),
+            content: "Previous answer".to_string(),
+        }];
+
+        let messages = build_rag_context(&chunks, &history, "Explain again", 5);
+
+        assert_eq!(messages[0].role, "system");
+        assert_eq!(messages[0].content, CHAT_RESPONSE_SYSTEM_PROMPT);
+        assert_eq!(messages[1].role, "user");
+        assert!(messages[1].content.contains("<lecture_context>"));
+        assert!(messages[1]
+            .content
+            .contains("<slide id=\"12\" chunk=\"0\">"));
+        assert_eq!(messages[2].role, "assistant");
+        assert_eq!(messages[3].role, "user");
+        assert_eq!(messages[3].content, "Explain again");
+    }
 }

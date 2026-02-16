@@ -274,7 +274,7 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
           <Button
             onClick={handleUpload}
             disabled={isUploading || !hasGeminiKey || isCheckingKey}
-            className="w-full hover:cursor-pointer sm:w-auto"
+            className="w-full sm:w-auto"
           >
             {isUploading
               ? 'Uploading...'

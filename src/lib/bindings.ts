@@ -224,7 +224,7 @@ message: string }
 export type ApiKeyResponse = { provider: string; has_provided_key: boolean }
 export type Chat = { id: string; document_id: string; title: string; created_at: string; updated_at: string }
 export type ChatCreate = { title: string | null }
-export type ChatStreamEvent = { event: "UserMessageSaved"; message_id: string } | { event: "Chunk"; content: string } | { event: "Done"; message_id: string } | { event: "Error"; message: string }
+export type ChatStreamEvent = { event: "UserMessageSaved"; message_id: string } | { event: "Chunk"; content: string } | { event: "Done"; message_id: string } | { event: "TitleUpdated"; chat_id: string; title: string; updated_at: string } | { event: "Error"; message: string }
 export type ChatUpdate = { title: string | null }
 export type DocumentResponse = { id: string; folder_id: string; title: string; file_path: string | null; status: string; error_details: string | null; total_pages: number; embeddings_complete: boolean; created_at: string; updated_at: string; accessed_at: string; completed_at: string | null }
 export type DocumentStatus = { status: string; error_details: string | null }

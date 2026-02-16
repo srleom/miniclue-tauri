@@ -1,0 +1,168 @@
+import { Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Thread } from '@/components/assistant-ui/thread';
+import { ChatHeader } from '@/components/document/chat-header';
+import { Badge } from '@/components/ui/badge';
+import { ChatRuntimeProvider } from '@/lib/chat/chat-runtime-provider';
+import { useChats, useCreateChat } from '@/lib/chat/use-chat-queries';
+
+interface ChatPanelProps {
+  documentId: string;
+  status: string;
+}
+
+type ProcessingStatus = 'pending_processing' | 'parsing' | 'processing';
+
+const PROCESSING_STATUS_META: Record<
+  ProcessingStatus,
+  {
+    badge: string;
+    badgeClassName: string;
+  }
+> = {
+  pending_processing: {
+    badge: 'Queued',
+    badgeClassName:
+      'border-slate-300/70 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300',
+  },
+  parsing: {
+    badge: 'Parsing PDF',
+    badgeClassName:
+      'border-sky-300/70 bg-sky-100 text-sky-700 dark:border-sky-800 dark:bg-sky-950/60 dark:text-sky-300',
+  },
+  processing: {
+    badge: 'Embedding',
+    badgeClassName:
+      'border-amber-300/70 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300',
+  },
+};
+
+const isProcessingStatus = (status: string): status is ProcessingStatus =>
+  status === 'pending_processing' ||
+  status === 'parsing' ||
+  status === 'processing';
+
+/**
+ * Chat panel component that displays the chat UI for a document
+ *
+ * Features:
+ * - Auto-creates first chat if none exist
+ * - Editable chat title with history dropdown and new chat button
+ * - Model selector in composer (input area)
+ * - Full chat UI with streaming support
+ * - Disabled during document processing
+ */
+export function ChatPanel({ documentId, status }: ChatPanelProps) {
+  const [selectedModel, setSelectedModel] = useState<string>(
+    'gemini-3-flash-preview'
+  );
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const processingState = isProcessingStatus(status)
+    ? PROCESSING_STATUS_META[status]
+    : null;
+
+  const { data: chats = [], isLoading: isLoadingChats } = useChats(documentId);
+  const createChatMutation = useCreateChat(documentId);
+
+  // Track if we've already initialized a chat for this document
+  const hasInitializedRef = useRef(false);
+  // Track previous processing state to detect completion
+  const prevProcessingStateRef = useRef(processingState);
+
+  // Ensure chat selection when processing completes
+  useEffect(() => {
+    // Detect processing completion (was processing, now not)
+    if (prevProcessingStateRef.current && !processingState) {
+      // Processing just completed - ensure a chat is selected
+      if (!currentChatId && chats.length > 0) {
+        console.log('Processing completed, ensuring chat selection');
+        setCurrentChatId(chats[0].id);
+      }
+    }
+    prevProcessingStateRef.current = processingState;
+  }, [processingState, currentChatId, chats]);
+
+  // Auto-create first chat if none exist and ensure selection reliability
+  // biome-ignore lint/correctness/useExhaustiveDependencies: createChatMutation.mutateAsync is intentionally excluded to prevent duplicate chat creation on mutation state changes
+  useEffect(() => {
+    const initializeChat = async () => {
+      // Skip if already initialized or currently initializing
+      if (hasInitializedRef.current) return;
+
+      if (!isLoadingChats && chats.length === 0) {
+        hasInitializedRef.current = true; // Mark as initialized BEFORE async call
+
+        try {
+          const newChat = await createChatMutation.mutateAsync({
+            title: 'New Chat',
+          });
+          // Verify new chat has valid ID before setting
+          if (newChat?.id) {
+            setCurrentChatId(newChat.id);
+          } else {
+            console.error('Created chat has no ID');
+            hasInitializedRef.current = false; // Reset to allow retry
+          }
+        } catch (error) {
+          console.error('Error creating initial chat:', error);
+          hasInitializedRef.current = false; // Reset on error to allow retry
+        }
+      } else if (chats.length > 0 && !currentChatId) {
+        // Set first chat as current if not already set
+        setCurrentChatId(chats[0].id);
+      }
+    };
+
+    initializeChat();
+  }, [chats, isLoadingChats, currentChatId]);
+
+  if (isLoadingChats || !currentChatId) {
+    return (
+      <div className="flex h-full items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col bg-background">
+      {/* Header with chat title and action buttons */}
+      <div className="flex h-12 shrink-0 items-center border-b px-4">
+        <ChatHeader
+          documentId={documentId}
+          chatId={currentChatId}
+          onChatChange={setCurrentChatId}
+        />
+      </div>
+
+      {/* Chat UI */}
+      <div className="flex-1 overflow-hidden">
+        {processingState ? (
+          <div className="flex h-full items-center justify-center p-5">
+            <div className="flex flex-col items-center justify-center gap-3">
+              <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
+              <Badge
+                variant="outline"
+                className={`text-xs ${processingState.badgeClassName}`}
+              >
+                {processingState.badge}
+              </Badge>
+            </div>
+          </div>
+        ) : (
+          <ChatRuntimeProvider
+            key={currentChatId}
+            documentId={documentId}
+            chatId={currentChatId}
+            model={selectedModel}
+          >
+            <Thread
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+            />
+          </ChatRuntimeProvider>
+        )}
+      </div>
+    </div>
+  );
+}

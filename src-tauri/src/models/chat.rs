@@ -35,26 +35,19 @@ pub struct MessageResponse {
     pub id: String,
     pub chat_id: String,
     pub role: String,
-    #[specta(type = String)]
-    pub parts: serde_json::Value,
-    #[specta(type = String)]
-    pub metadata: serde_json::Value,
+    pub parts: String,    // Keep as JSON string
+    pub metadata: String, // Keep as JSON string
     pub created_at: String,
 }
 
 impl From<Message> for MessageResponse {
     fn from(m: Message) -> Self {
-        let parts: serde_json::Value =
-            serde_json::from_str(&m.parts).unwrap_or(serde_json::Value::Array(vec![]));
-        let metadata: serde_json::Value =
-            serde_json::from_str(&m.metadata).unwrap_or(serde_json::json!({}));
-
         Self {
             id: m.id,
             chat_id: m.chat_id,
             role: m.role,
-            parts,
-            metadata,
+            parts: m.parts,       // Pass through as-is
+            metadata: m.metadata, // Pass through as-is
             created_at: m.created_at,
         }
     }

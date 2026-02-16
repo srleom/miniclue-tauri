@@ -36,7 +36,7 @@ export default function FolderHeader({
           trigger={
             <button
               type="button"
-              className="text-muted-foreground ml-2 cursor-pointer opacity-100 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+              className="text-muted-foreground ml-2 opacity-100 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100"
             >
               <Pencil size={20} />
             </button>
