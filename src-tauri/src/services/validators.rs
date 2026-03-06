@@ -256,6 +256,81 @@ impl ApiKeyValidator {
         }
     }
 
+    /// Validates a custom OpenAI-compatible provider by making a minimal chat completions call
+    pub async fn validate_custom(
+        &self,
+        base_url: &str,
+        api_key: &str,
+        model_id: &str,
+    ) -> Result<(), String> {
+        if api_key.is_empty() {
+            return Err("API key cannot be empty".to_string());
+        }
+        if base_url.is_empty() {
+            return Err("Base URL cannot be empty".to_string());
+        }
+        if model_id.is_empty() {
+            return Err("Model ID cannot be empty".to_string());
+        }
+
+        let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+
+        let request_body = json!({
+            "model": model_id,
+            "max_tokens": 1,
+            "messages": [
+                {"role": "user", "content": "test"}
+            ]
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to reach custom provider: {}", e))?;
+
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Unable to read response"));
+
+        match status.as_u16() {
+            200 => Ok(()),
+            401 | 403 => {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                    if let Some(error) = json
+                        .get("error")
+                        .and_then(|e| e.get("message"))
+                        .and_then(|m| m.as_str())
+                    {
+                        return Err(format!("Invalid API key: {}", error));
+                    }
+                }
+                Err("Invalid API key: unauthorized".to_string())
+            }
+            _ => {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
+                    if let Some(error) = json
+                        .get("error")
+                        .and_then(|e| e.get("message"))
+                        .and_then(|m| m.as_str())
+                    {
+                        return Err(format!("Custom provider validation failed: {}", error));
+                    }
+                }
+                Err(format!(
+                    "Custom provider validation failed: HTTP {}",
+                    status
+                ))
+            }
+        }
+    }
+
     /// Validates a DeepSeek API key by calling the models endpoint (similar to OpenAI)
     async fn validate_deepseek(&self, api_key: &str) -> Result<(), String> {
         let url = "https://api.deepseek.com/v1/models";

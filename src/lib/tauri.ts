@@ -1,25 +1,27 @@
 import { Channel } from '@tauri-apps/api/core';
-import { commands } from './bindings';
 import type { ChatStreamEvent as GeneratedChatStreamEvent } from './bindings';
+import { commands } from './bindings';
 import type {
-  UserFolder,
-  RecentDocumentsResponse,
+  ApiKeyResponse,
+  Chat,
+  ChatCreate,
+  ChatStreamEvent,
+  ChatUpdate,
+  CustomProviderRequest,
+  CustomProviderResponse,
+  Document,
+  DocumentUpdate,
   Folder,
   FolderCreate,
   FolderUpdate,
-  Document,
-  DocumentUpdate,
-  Chat,
-  ChatCreate,
-  ChatUpdate,
-  MessageResponse,
-  Message,
-  ModelsResponse,
-  ApiKeyResponse,
-  Provider,
-  ModelToggle,
-  ChatStreamEvent,
   ImportDocumentRequest,
+  Message,
+  MessageResponse,
+  ModelsResponse,
+  ModelToggle,
+  Provider,
+  RecentDocumentsResponse,
+  UserFolder,
 } from './types';
 
 // Helper to unwrap Result type from Tauri Specta bindings
@@ -279,14 +281,14 @@ export const streamChat = async (
 
 // Settings commands
 export const storeApiKey = async (
-  provider: Provider,
+  provider: string,
   apiKey: string
 ): Promise<ApiKeyResponse> => {
   return unwrap(await commands.storeApiKey(provider, apiKey));
 };
 
 export const deleteApiKey = async (
-  provider: Provider
+  provider: string
 ): Promise<ApiKeyResponse> => {
   return unwrap(await commands.deleteApiKey(provider));
 };
@@ -301,4 +303,21 @@ export const updateModelPreference = async (
   enabled: boolean
 ): Promise<ModelToggle> => {
   return unwrap(await commands.updateModelPreference(provider, model, enabled));
+};
+
+// Custom provider commands
+export const listCustomProviders = async (): Promise<
+  CustomProviderResponse[]
+> => {
+  return unwrap(await commands.listCustomProviders());
+};
+
+export const storeCustomProvider = async (
+  request: CustomProviderRequest
+): Promise<CustomProviderResponse> => {
+  return unwrap(await commands.storeCustomProvider(request));
+};
+
+export const deleteCustomProvider = async (id: string): Promise<void> => {
+  unwrap(await commands.deleteCustomProvider(id));
 };

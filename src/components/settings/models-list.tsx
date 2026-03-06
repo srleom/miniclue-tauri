@@ -1,11 +1,18 @@
 'use client';
 
+// icons
+import { ChevronDown, Cpu, Plus } from 'lucide-react';
 // react
 import { useCallback, useEffect, useMemo, useState } from 'react';
-
 // third-party
 import { toast } from 'sonner';
-
+import { ApiKeyDialog } from '@/components/settings/api-key-dialog';
+// code
+import {
+  providerDisplayNames,
+  providerLogos,
+} from '@/components/settings/provider-constants';
+import { Badge } from '@/components/ui/badge';
 // components
 import { Button } from '@/components/ui/button';
 import {
@@ -14,22 +21,12 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { Switch } from '@/components/ui/switch';
-import { ApiKeyDialog } from '@/components/settings/api-key-dialog';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-// icons
-import { ChevronDown, Cpu, Plus } from 'lucide-react';
-
-// code
-import {
-  providerDisplayNames,
-  providerLogos,
-} from '@/components/settings/provider-constants';
-import type { Provider } from '@/lib/types';
 import { useUpdateModelPreference } from '@/hooks/use-queries';
+import type { Provider } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 type ProviderModels = {
-  provider: Provider;
+  provider: string;
   models: { id: string; name: string; enabled: boolean }[];
   hasKey: boolean;
 };
@@ -67,7 +64,7 @@ export function ModelsList({ providers }: ModelsListProps) {
   const hasProviders = state.length > 0;
 
   const handleToggle = useCallback(
-    async (provider: Provider, modelId: string, nextEnabled: boolean) => {
+    async (provider: string, modelId: string, nextEnabled: boolean) => {
       const pendingId = `${provider}:${modelId}`;
       setPendingKey(pendingId);
 
@@ -92,7 +89,7 @@ export function ModelsList({ providers }: ModelsListProps) {
 
       try {
         await updateModelPreference.mutateAsync({
-          provider,
+          provider: provider as Provider,
           model: modelId,
           enabled: nextEnabled,
         });
@@ -122,10 +119,15 @@ export function ModelsList({ providers }: ModelsListProps) {
   const providerCards = useMemo(
     () =>
       state.map((provider) => {
-        const displayName =
-          providerDisplayNames[
-            provider.provider as keyof typeof providerDisplayNames
-          ] ?? provider.provider;
+        const isCustom = provider.provider.startsWith('custom:');
+
+        const displayName = isCustom
+          ? (providerDisplayNames[
+              provider.provider as keyof typeof providerDisplayNames
+            ] ?? provider.provider.replace('custom:', ''))
+          : (providerDisplayNames[
+              provider.provider as keyof typeof providerDisplayNames
+            ] ?? provider.provider);
         const logo = providerLogos[
           provider.provider as keyof typeof providerLogos
         ] ?? <Cpu className="size-6" />;
@@ -177,7 +179,7 @@ export function ModelsList({ providers }: ModelsListProps) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handleAddApiKey(provider.provider)}
+                onClick={() => handleAddApiKey(provider.provider as Provider)}
                 className="gap-2"
               >
                 <Plus className="h-4 w-4" />
@@ -209,7 +211,14 @@ export function ModelsList({ providers }: ModelsListProps) {
                         Required
                       </Badge>
                     )}
-                    {provider.provider === 'gemini' ? (
+                    {isCustom ? (
+                      <Badge
+                        variant="secondary"
+                        className="border-blue-200 bg-blue-100 text-[10px] font-bold tracking-wider text-blue-700 uppercase dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                      >
+                        Custom
+                      </Badge>
+                    ) : provider.provider === 'gemini' ? (
                       <Badge
                         variant="secondary"
                         className="border-emerald-200 bg-emerald-100 text-[10px] font-bold tracking-wider text-emerald-700 uppercase dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
@@ -231,7 +240,18 @@ export function ModelsList({ providers }: ModelsListProps) {
                     hasActiveModels ? 'text-green-600' : 'text-muted-foreground'
                   }`}
                 >
-                  {activeCount} of {totalCount} active
+                  {isCustom ? (
+                    <Badge
+                      variant="secondary"
+                      className="border-green-200 bg-green-100 text-[10px] font-bold tracking-wider text-green-700 uppercase dark:border-green-800 dark:bg-green-900/30 dark:text-green-400"
+                    >
+                      Always active
+                    </Badge>
+                  ) : (
+                    <>
+                      {activeCount} of {totalCount} active
+                    </>
+                  )}
                   <ChevronDown className="h-4 w-4" />
                 </span>
               </Button>
@@ -255,13 +275,22 @@ export function ModelsList({ providers }: ModelsListProps) {
                           {model.id}
                         </p>
                       </div>
-                      <Switch
-                        checked={model.enabled}
-                        onCheckedChange={(checked) =>
-                          handleToggle(provider.provider, model.id, checked)
-                        }
-                        disabled={disabled}
-                      />
+                      {isCustom ? (
+                        <Badge
+                          variant="secondary"
+                          className="border-green-200 bg-green-100 text-[10px] font-bold tracking-wider text-green-700 uppercase dark:border-green-800 dark:bg-green-900/30 dark:text-green-400"
+                        >
+                          Always active
+                        </Badge>
+                      ) : (
+                        <Switch
+                          checked={model.enabled}
+                          onCheckedChange={(checked) =>
+                            handleToggle(provider.provider, model.id, checked)
+                          }
+                          disabled={disabled}
+                        />
+                      )}
                     </div>
                   );
                 })

@@ -48,7 +48,7 @@ pub async fn rewrite_query_streaming(
 
     // Use streaming parser
     let messages = build_rewrite_messages(original_query, history);
-    let mut stream = crate::services::llm::stream_chat(messages, model, api_key.to_string())
+    let mut stream = crate::services::llm::stream_chat(messages, model, api_key.to_string(), None)
         .await
         .map_err(|e| QueryRewriterError::ApiError(e.to_string()))?;
 

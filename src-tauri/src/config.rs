@@ -3,6 +3,15 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomProvider {
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub model_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default)]
     pub api_keys: HashMap<String, String>,
@@ -10,6 +19,8 @@ pub struct AppConfig {
     pub model_preferences: HashMap<String, HashMap<String, bool>>,
     #[serde(default)]
     pub settings: AppSettings,
+    #[serde(default)]
+    pub custom_providers: Vec<CustomProvider>,
     #[serde(skip)]
     pub config_path: PathBuf,
 }
@@ -33,6 +44,7 @@ impl AppConfig {
                 api_keys: HashMap::new(),
                 model_preferences: HashMap::new(),
                 settings: AppSettings::default(),
+                custom_providers: Vec::new(),
                 config_path: config_path.clone(),
             };
             config.save()?;
@@ -56,6 +68,7 @@ impl AppConfig {
         self.api_keys = backup.api_keys.clone();
         self.model_preferences = backup.model_preferences.clone();
         self.settings = backup.settings.clone();
+        self.custom_providers = backup.custom_providers.clone();
     }
 
     pub fn get_api_key(&self, provider: &str) -> Option<&String> {
@@ -99,5 +112,30 @@ impl AppConfig {
         for &model in models {
             provider_prefs.insert(model.to_string(), true);
         }
+    }
+
+    /// Get a custom provider by id
+    pub fn get_custom_provider(&self, id: &str) -> Option<&CustomProvider> {
+        self.custom_providers.iter().find(|p| p.id == id)
+    }
+
+    /// Add or replace a custom provider (upsert by id)
+    pub fn add_custom_provider(&mut self, provider: CustomProvider) {
+        if let Some(existing) = self
+            .custom_providers
+            .iter_mut()
+            .find(|p| p.id == provider.id)
+        {
+            *existing = provider;
+        } else {
+            self.custom_providers.push(provider);
+        }
+    }
+
+    /// Remove a custom provider by id, returns true if removed
+    pub fn remove_custom_provider(&mut self, id: &str) -> bool {
+        let len_before = self.custom_providers.len();
+        self.custom_providers.retain(|p| p.id != id);
+        self.custom_providers.len() < len_before
     }
 }

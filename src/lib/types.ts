@@ -1,21 +1,23 @@
 // Re-export generated types from Tauri Specta bindings
 export type {
   ApiError,
-  FolderResponse as Folder,
-  DocumentResponse as Document,
+  ApiKeyResponse,
   Chat,
+  CustomProviderRequest,
+  CustomProviderResponse,
+  DocumentResponse as Document,
+  FolderResponse as Folder,
+  ImportDocumentRequest,
   MessageResponse,
   ModelsResponse,
   ModelToggle,
   ProviderModels,
-  ApiKeyResponse,
   RecentDocument,
   RecentDocumentsResponse,
+  Result,
+  StreamChatRequest,
   UserFolder,
   UserFolderDocument,
-  StreamChatRequest,
-  ImportDocumentRequest,
-  Result,
 } from './bindings';
 
 // Make nullable fields accept undefined for easier usage

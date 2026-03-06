@@ -22,6 +22,9 @@ pub fn export_bindings() {
             commands::user::delete_api_key,
             commands::user::list_models,
             commands::user::update_model_preference,
+            commands::user::list_custom_providers,
+            commands::user::store_custom_provider,
+            commands::user::delete_custom_provider,
             // Folder commands
             commands::folder::create_folder,
             commands::folder::get_folder,

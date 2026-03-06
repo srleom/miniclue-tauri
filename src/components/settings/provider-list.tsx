@@ -1,18 +1,13 @@
 'use client';
 
+// icons
+import { Check, ChevronRight, Plus, Server, Trash2, X } from 'lucide-react';
 // react
 import type React from 'react';
 import { useState } from 'react';
 
-// icons
-import { Check, X, ChevronRight, Trash2 } from 'lucide-react';
-
 // third-party
 import { toast } from 'sonner';
-
-// components
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,13 +18,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { ApiKeyDialog } from './api-key-dialog';
-
+import { Badge } from '@/components/ui/badge';
+// components
+import { Button } from '@/components/ui/button';
 // actions
-import { useDeleteApiKey } from '@/hooks/use-queries';
-import type { Provider } from '@/lib/types';
-import { providerDisplayNames, providers } from './provider-constants';
+import {
+  useCustomProviders,
+  useDeleteApiKey,
+  useDeleteCustomProvider,
+} from '@/hooks/use-queries';
+import type { CustomProviderResponse, Provider } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { ApiKeyDialog } from './api-key-dialog';
+import { CustomProviderDialog } from './custom-provider-dialog';
+import { providerDisplayNames, providers } from './provider-constants';
 
 interface ProviderListProps {
   apiKeysStatus: Record<Provider, boolean>;
@@ -44,6 +46,16 @@ export function ProviderList({ apiKeysStatus, onUpdate }: ProviderListProps) {
   const [deleteProvider, setDeleteProvider] = useState<Provider | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const deleteApiKey = useDeleteApiKey();
+
+  // Custom provider state
+  const { data: customProviders = [] } = useCustomProviders();
+  const deleteCustomProvider = useDeleteCustomProvider();
+  const [isCustomDialogOpen, setIsCustomDialogOpen] = useState(false);
+  const [editingCustomProvider, setEditingCustomProvider] =
+    useState<CustomProviderResponse | null>(null);
+  const [deleteCustomId, setDeleteCustomId] = useState<string | null>(null);
+  const [isDeleteCustomDialogOpen, setIsDeleteCustomDialogOpen] =
+    useState(false);
 
   const handleProviderClick = (provider: Provider) => {
     setSelectedProvider(provider);
@@ -87,6 +99,40 @@ export function ProviderList({ apiKeysStatus, onUpdate }: ProviderListProps) {
   const handleDeleteCancel = () => {
     setIsDeleteDialogOpen(false);
     setDeleteProvider(null);
+  };
+
+  // Custom provider handlers
+  const handleAddCustomProvider = () => {
+    setEditingCustomProvider(null);
+    setIsCustomDialogOpen(true);
+  };
+
+  const handleEditCustomProvider = (cp: CustomProviderResponse) => {
+    setEditingCustomProvider(cp);
+    setIsCustomDialogOpen(true);
+  };
+
+  const handleDeleteCustomClick = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleteCustomId(id);
+    setIsDeleteCustomDialogOpen(true);
+  };
+
+  const handleDeleteCustomConfirm = async () => {
+    if (!deleteCustomId) return;
+    try {
+      await deleteCustomProvider.mutateAsync(deleteCustomId);
+      toast.success('Custom provider deleted');
+      setIsDeleteCustomDialogOpen(false);
+      setDeleteCustomId(null);
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+
+  const handleDeleteCustomCancel = () => {
+    setIsDeleteCustomDialogOpen(false);
+    setDeleteCustomId(null);
   };
 
   return (
@@ -175,6 +221,66 @@ export function ProviderList({ apiKeysStatus, onUpdate }: ProviderListProps) {
             </div>
           );
         })}
+
+        {/* Custom providers section */}
+        {customProviders.map((cp) => (
+          <div
+            key={cp.id}
+            className="bg-card hover:bg-accent/50 flex min-h-[68px] items-center justify-between rounded-lg border p-4 text-sm transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Server className="size-6" />
+              <div>
+                <div className="flex items-center gap-2 font-medium">
+                  {cp.name}
+                  <Badge
+                    variant="secondary"
+                    className="border-blue-200 bg-blue-100 text-[10px] font-bold tracking-wider text-blue-700 uppercase dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                  >
+                    Custom
+                  </Badge>
+                </div>
+                <p className="text-muted-foreground text-xs">{cp.base_url}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-sm text-green-600">
+                <Check className="h-4 w-4" />
+                <span>Active</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleEditCustomProvider(cp)}
+                  className="gap-2"
+                >
+                  Edit
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => handleDeleteCustomClick(cp.id, e)}
+                  className="text-destructive hover:text-destructive"
+                  disabled={deleteCustomProvider.isPending}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* Add custom provider button */}
+        <Button
+          variant="outline"
+          className="w-full gap-2"
+          onClick={handleAddCustomProvider}
+        >
+          <Plus className="h-4 w-4" />
+          Add Custom Provider
+        </Button>
       </div>
 
       {selectedProvider && (
@@ -192,6 +298,12 @@ export function ProviderList({ apiKeysStatus, onUpdate }: ProviderListProps) {
           hasKey={apiKeysStatus[selectedProvider] ?? false}
         />
       )}
+
+      <CustomProviderDialog
+        open={isCustomDialogOpen}
+        onOpenChange={setIsCustomDialogOpen}
+        existing={editingCustomProvider ?? undefined}
+      />
 
       <AlertDialog
         open={isDeleteDialogOpen}
@@ -226,6 +338,42 @@ export function ProviderList({ apiKeysStatus, onUpdate }: ProviderListProps) {
               className="bg-destructive hover:bg-destructive/90"
             >
               {deleteApiKey.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={isDeleteCustomDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleDeleteCustomCancel();
+          } else {
+            setIsDeleteCustomDialogOpen(true);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Custom Provider</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this custom provider? This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={handleDeleteCustomCancel}
+              disabled={deleteCustomProvider.isPending}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteCustomConfirm}
+              disabled={deleteCustomProvider.isPending}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {deleteCustomProvider.isPending ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

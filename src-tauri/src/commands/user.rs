@@ -1,10 +1,11 @@
 use tauri::State;
 
+use crate::config::CustomProvider;
 use crate::db;
 use crate::error::ApiError;
 use crate::models::user::{
-    ApiKeyResponse, ModelToggle, ModelsResponse, ProviderModels, RecentDocument,
-    RecentDocumentsResponse, UserFolder,
+    ApiKeyResponse, CustomProviderRequest, CustomProviderResponse, ModelToggle, ModelsResponse,
+    ProviderModels, RecentDocument, RecentDocumentsResponse, UserFolder,
 };
 use crate::services::validators::ApiKeyValidator;
 use crate::state::AppState;
@@ -252,6 +253,18 @@ pub async fn list_models(state: State<'_, AppState>) -> Result<ModelsResponse, A
         }
     }
 
+    // Append custom providers — each surfaces as a single always-active model
+    for cp in &config.custom_providers {
+        providers.push(ProviderModels {
+            provider: format!("custom:{}", cp.id),
+            models: vec![ModelToggle {
+                id: cp.model_id.clone(),
+                name: cp.model_id.clone(),
+                enabled: true,
+            }],
+        });
+    }
+
     Ok(ModelsResponse { providers })
 }
 
@@ -297,4 +310,86 @@ pub async fn update_model_preference(
         name: model_name.to_string(),
         enabled,
     })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn list_custom_providers(
+    state: State<'_, AppState>,
+) -> Result<Vec<CustomProviderResponse>, ApiError> {
+    let config = state.config.read().await;
+    let result = config
+        .custom_providers
+        .iter()
+        .map(|cp| CustomProviderResponse {
+            id: cp.id.clone(),
+            name: cp.name.clone(),
+            base_url: cp.base_url.clone(),
+            model_id: cp.model_id.clone(),
+        })
+        .collect();
+    Ok(result)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn store_custom_provider(
+    state: State<'_, AppState>,
+    request: CustomProviderRequest,
+) -> Result<CustomProviderResponse, ApiError> {
+    // Validate fields
+    if request.id.is_empty() {
+        return Err(ApiError::invalid_input("Provider ID cannot be empty"));
+    }
+    if request.name.is_empty() {
+        return Err(ApiError::invalid_input("Provider name cannot be empty"));
+    }
+    if request.base_url.is_empty() {
+        return Err(ApiError::invalid_input("Base URL cannot be empty"));
+    }
+    if request.model_id.is_empty() {
+        return Err(ApiError::invalid_input("Model ID cannot be empty"));
+    }
+
+    // Validate connectivity
+    let validator = ApiKeyValidator::new();
+    validator
+        .validate_custom(&request.base_url, &request.api_key, &request.model_id)
+        .await
+        .map_err(ApiError::api_key_error)?;
+
+    // Persist
+    let mut config = state.config.write().await;
+    let cp = CustomProvider {
+        id: request.id.clone(),
+        name: request.name.clone(),
+        base_url: request.base_url.clone(),
+        api_key: request.api_key.clone(),
+        model_id: request.model_id.clone(),
+    };
+    config.add_custom_provider(cp);
+    config
+        .save()
+        .map_err(|e| ApiError::file_error(e.to_string()))?;
+
+    Ok(CustomProviderResponse {
+        id: request.id,
+        name: request.name,
+        base_url: request.base_url,
+        model_id: request.model_id,
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn delete_custom_provider(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), ApiError> {
+    let mut config = state.config.write().await;
+    config.remove_custom_provider(&id);
+    config
+        .save()
+        .map_err(|e| ApiError::file_error(e.to_string()))?;
+    Ok(())
 }

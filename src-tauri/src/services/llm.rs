@@ -91,8 +91,9 @@ pub async fn stream_chat(
     messages: Vec<Message>,
     model: String,
     api_key: String,
+    base_url_override: Option<String>,
 ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LlmError>> + Send>>, LlmError> {
-    stream_chat_with_options(messages, model, api_key, Some(0.7), None).await
+    stream_chat_with_options(messages, model, api_key, Some(0.7), None, base_url_override).await
 }
 
 async fn stream_chat_with_options(
@@ -101,6 +102,7 @@ async fn stream_chat_with_options(
     api_key: String,
     temperature: Option<f32>,
     max_tokens: Option<i32>,
+    base_url_override: Option<String>,
 ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LlmError>> + Send>>, LlmError> {
     // Create client with timeout (60 seconds for streaming)
     let client = Client::builder()
@@ -108,7 +110,10 @@ async fn stream_chat_with_options(
         .build()
         .map_err(|e| LlmError::NetworkError(e.to_string()))?;
 
-    let base_url = get_provider_base_url(&model);
+    let base_url = match base_url_override {
+        Some(ref url) => url.as_str().trim_end_matches('/').to_string(),
+        None => get_provider_base_url(&model).to_string(),
+    };
     let url = format!("{}/chat/completions", base_url);
 
     let request = ChatRequest {
@@ -224,6 +229,7 @@ pub async fn generate_title(
         api_key,
         Some(TITLE_TEMPERATURE),
         Some(TITLE_MAX_TOKENS),
+        None,
     )
     .await?;
 

@@ -1,22 +1,21 @@
-import * as React from 'react';
-import { useNavigate } from '@tanstack/react-router';
-import { toast } from 'sonner';
-import { open } from '@tauri-apps/plugin-dialog';
-import { importDocuments } from '@/lib/tauri';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, Upload as UploadIcon, X } from 'lucide-react';
-import { useModels } from '@/hooks/use-queries';
 import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
+import { open } from '@tauri-apps/plugin-dialog';
+import { AlertCircle, Upload as UploadIcon, X } from 'lucide-react';
+import * as React from 'react';
+import { toast } from 'sonner';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import {
   FileUpload,
-  FileUploadTrigger,
-  FileUploadList,
   FileUploadItem,
-  FileUploadItemPreview,
-  FileUploadItemMetadata,
   FileUploadItemDelete,
+  FileUploadItemMetadata,
+  FileUploadItemPreview,
+  FileUploadList,
+  FileUploadTrigger,
 } from '@/components/ui/file-upload';
+import { importDocuments } from '@/lib/tauri';
 
 interface PdfUploadProps {
   isFolderPage?: boolean;
@@ -27,12 +26,8 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
   const [files, setFiles] = React.useState<File[]>([]);
   const [filePaths, setFilePaths] = React.useState<string[]>([]);
   const [isUploading, setIsUploading] = React.useState(false);
-  const { data: modelsData, isLoading: isCheckingKey } = useModels();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-
-  const hasGeminiKey =
-    modelsData?.providers?.some((p) => p.provider === 'gemini') ?? false;
 
   // Create a lightweight File object from a path for display purposes
   const createFileFromPath = (path: string): File => {
@@ -47,13 +42,6 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
     event: React.MouseEvent<HTMLButtonElement>
   ) => {
     event.preventDefault(); // Prevent FileUploadTrigger from opening browser file input
-
-    if (!hasGeminiKey) {
-      toast.error(
-        'Google Gemini API key is required to upload lectures. Please add your API key in settings.'
-      );
-      return;
-    }
 
     const selected = await open({
       multiple: true,
@@ -74,13 +62,6 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
   };
 
   const handleUpload = async () => {
-    if (!hasGeminiKey) {
-      toast.error(
-        'Google Gemini API key is required to upload lectures. Please add your API key in settings (sidebar).'
-      );
-      return;
-    }
-
     if (filePaths.length === 0) {
       toast.info('No files to upload.');
       return;
@@ -185,40 +166,23 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
       >
         {/* Browse button - replaces dropzone */}
         <div className="flex flex-col items-center gap-4">
-          <div
-            className={`flex min-h-[14em] w-full items-center justify-center rounded-lg border-2 border-dashed transition-colors md:min-h-[16em] ${
-              hasGeminiKey && !isCheckingKey
-                ? 'border-muted-foreground/25'
-                : 'border-muted-foreground/10'
-            }`}
-          >
+          <div className="border-muted-foreground/25 flex min-h-[14em] w-full items-center justify-center rounded-lg border-2 border-dashed transition-colors md:min-h-[16em]">
             <div className="flex flex-col items-center gap-4 p-6 text-center">
               <UploadIcon className="h-10 w-10 text-muted-foreground" />
               <div>
                 <h3 className="text-lg font-semibold">
-                  {isCheckingKey
-                    ? 'Checking API key...'
-                    : !hasGeminiKey
-                      ? 'Google Gemini API key required'
-                      : isFolderPage
-                        ? 'Upload lectures here'
-                        : 'Click to select PDF files'}
+                  {isFolderPage
+                    ? 'Upload lectures here'
+                    : 'Click to select PDF files'}
                 </h3>
                 <p className="text-muted-foreground mt-2 text-sm">
-                  {!hasGeminiKey ? (
-                    <>
-                      Please add your Google Gemini API key in settings
-                      (sidebar) to upload lectures.
-                    </>
-                  ) : (
-                    'You can upload up to 3 PDF files.'
-                  )}
+                  You can upload up to 3 PDF files.
                 </p>
               </div>
               <FileUploadTrigger asChild>
                 <Button
                   onClick={handleBrowseFiles}
-                  disabled={!hasGeminiKey || isCheckingKey}
+                  disabled={isUploading}
                   variant="outline"
                 >
                   Browse files
@@ -273,7 +237,7 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
         <div className="flex justify-end">
           <Button
             onClick={handleUpload}
-            disabled={isUploading || !hasGeminiKey || isCheckingKey}
+            disabled={isUploading}
             className="w-full sm:w-auto"
           >
             {isUploading

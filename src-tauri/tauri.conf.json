@@ -30,11 +30,7 @@
         "font-src": ["'self'", "data:"],
         "connect-src": [
           "'self'",
-          "https://api.openai.com",
-          "https://api.anthropic.com",
-          "https://generativelanguage.googleapis.com",
-          "https://api.x.ai",
-          "https://api.deepseek.com",
+          "https://*",
           "tauri:"
         ]
       },

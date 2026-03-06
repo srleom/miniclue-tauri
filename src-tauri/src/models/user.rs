@@ -58,3 +58,20 @@ pub struct ApiKeyResponse {
     pub provider: String,
     pub has_provided_key: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct CustomProviderRequest {
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub model_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct CustomProviderResponse {
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+    pub model_id: String,
+}

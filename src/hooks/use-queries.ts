@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from '../lib/tauri';
 import type {
-  FolderCreate,
-  FolderUpdate,
-  DocumentUpdate,
   ChatCreate,
   ChatUpdate,
+  CustomProviderRequest,
+  DocumentUpdate,
+  FolderCreate,
+  FolderUpdate,
   Provider,
 } from '../lib/types';
 
@@ -311,13 +312,8 @@ export function useDeleteChat() {
 export function useStoreApiKey() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      provider,
-      apiKey,
-    }: {
-      provider: Provider;
-      apiKey: string;
-    }) => api.storeApiKey(provider, apiKey),
+    mutationFn: ({ provider, apiKey }: { provider: string; apiKey: string }) =>
+      api.storeApiKey(provider, apiKey),
     onSuccess: async (_, variables) => {
       console.log(
         `[useStoreApiKey] Mutation succeeded for ${variables.provider}, refetching queries...`
@@ -347,7 +343,7 @@ export function useStoreApiKey() {
 export function useDeleteApiKey() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (provider: Provider) => api.deleteApiKey(provider),
+    mutationFn: (provider: string) => api.deleteApiKey(provider),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['models'] });
     },
@@ -368,6 +364,36 @@ export function useUpdateModelPreference() {
     }) => api.updateModelPreference(provider, model, enabled),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['models'] });
+    },
+  });
+}
+
+export function useCustomProviders() {
+  return useQuery({
+    queryKey: ['custom-providers'],
+    queryFn: api.listCustomProviders,
+  });
+}
+
+export function useStoreCustomProvider() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (req: CustomProviderRequest) => api.storeCustomProvider(req),
+    onSuccess: async () => {
+      await queryClient.refetchQueries({ queryKey: ['models'] });
+      await queryClient.refetchQueries({ queryKey: ['custom-providers'] });
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    },
+  });
+}
+
+export function useDeleteCustomProvider() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteCustomProvider(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['models'] });
+      queryClient.invalidateQueries({ queryKey: ['custom-providers'] });
     },
   });
 }

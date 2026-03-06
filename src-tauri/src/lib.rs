@@ -22,6 +22,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -49,6 +50,9 @@ pub fn run() {
             commands::user::delete_api_key,
             commands::user::list_models,
             commands::user::update_model_preference,
+            commands::user::list_custom_providers,
+            commands::user::store_custom_provider,
+            commands::user::delete_custom_provider,
             // Folder commands
             commands::folder::create_folder,
             commands::folder::get_folder,

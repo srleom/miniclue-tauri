@@ -1,28 +1,26 @@
 'use client';
 
-// react
-import { useState, useEffect } from 'react';
-
-// third-party
-import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { toast } from 'sonner';
-import * as z from 'zod';
-
+import { openUrl } from '@tauri-apps/plugin-opener';
 // icons
 import {
+  AlertCircle,
   CheckCircle2,
   ExternalLink,
   Eye,
   EyeOff,
   KeyRound,
   ShieldCheck,
-  AlertCircle,
 } from 'lucide-react';
-
+// react
+import { useEffect, useState } from 'react';
+// third-party
+import { useForm } from 'react-hook-form';
+import { toast } from 'sonner';
+import * as z from 'zod';
+import { Badge } from '@/components/ui/badge'; // Ensure you have this component
 // components
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge'; // Ensure you have this component
 import {
   Dialog,
   DialogContent,
@@ -41,15 +39,14 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { cn, getErrorMessage } from '@/lib/utils'; // standard shadcn utility
-
 // actions & types
 import { useStoreApiKey } from '@/hooks/use-queries';
 import type { Provider } from '@/lib/types';
+import { cn, getErrorMessage } from '@/lib/utils'; // standard shadcn utility
 import {
   providerDisplayNames,
-  providerLogos,
   providerHelpUrls,
+  providerLogos,
 } from './provider-constants';
 
 const apiKeySchema = z.object({
@@ -233,15 +230,14 @@ export function ApiKeyDialog({
               <span className="text-muted-foreground text-xs">
                 Don&apos;t have an API key?
               </span>
-              <a
-                href={providerHelpUrls[provider]}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => openUrl(providerHelpUrls[provider])}
                 className="text-primary inline-flex items-center gap-1 text-xs font-medium hover:underline"
               >
                 Get {providerDisplayNames[provider]} Key
                 <ExternalLink className="h-3 w-3" />
-              </a>
+              </button>
             </div>
 
             <DialogFooter>

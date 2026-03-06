@@ -5,6 +5,7 @@ use tauri::ipc::Channel;
 use tauri::State;
 use uuid::Uuid;
 
+use crate::config::AppConfig;
 use crate::db;
 use crate::error::ApiError;
 use crate::models::chat::{Chat, ChatCreate, ChatUpdate, MessageResponse};
@@ -138,6 +139,68 @@ pub struct StreamChatRequest {
     pub model: String,   // Selected model
 }
 
+/// Resolved credentials for a given model string.
+struct ModelCredentials {
+    /// The actual model identifier to send to the LLM API
+    model: String,
+    /// The API key to use
+    api_key: String,
+    /// Override base URL (for custom providers)
+    base_url_override: Option<String>,
+}
+
+/// Resolve the API key, actual model, and optional base URL override from the model string.
+///
+/// For standard providers the model string is the model id itself; the provider is derived
+/// from the model prefix (same logic as `get_provider_base_url`).
+///
+/// For custom providers the model string is `"custom:{id}"` and we look up the stored
+/// CustomProvider to retrieve its api_key, model_id, and base_url.
+fn resolve_model_credentials(
+    model: &str,
+    config: &AppConfig,
+) -> Result<ModelCredentials, ApiError> {
+    if let Some(id) = model.strip_prefix("custom:") {
+        let cp = config.get_custom_provider(id).ok_or_else(|| {
+            ApiError::invalid_input(format!("Custom provider '{}' not found", id))
+        })?;
+        return Ok(ModelCredentials {
+            model: cp.model_id.clone(),
+            api_key: cp.api_key.clone(),
+            base_url_override: Some(cp.base_url.clone()),
+        });
+    }
+
+    // Standard provider — derive from model prefix
+    let provider = if model.starts_with("gemini") || model.starts_with("models/gemini") {
+        "gemini"
+    } else if model.starts_with("gpt") || model.starts_with("o1") {
+        "openai"
+    } else if model.starts_with("claude") {
+        "anthropic"
+    } else if model.starts_with("grok") {
+        "xai"
+    } else if model.starts_with("deepseek") {
+        "deepseek"
+    } else {
+        return Err(ApiError::invalid_input(format!(
+            "Cannot determine provider for model '{}'",
+            model
+        )));
+    };
+
+    let api_key = config
+        .get_api_key(provider)
+        .ok_or_else(|| ApiError::api_key_error(format!("API key not configured for {}", provider)))?
+        .clone();
+
+    Ok(ModelCredentials {
+        model: model.to_string(),
+        api_key,
+        base_url_override: None,
+    })
+}
+
 fn extract_first_text_from_parts(parts_json: &str) -> String {
     let parts_value: serde_json::Value =
         serde_json::from_str(parts_json).unwrap_or(serde_json::Value::Array(vec![]));
@@ -183,12 +246,12 @@ pub async fn stream_chat(
     let user_message = request.message.clone();
     let model = request.model.clone();
 
-    // Get API key and base URL
+    // Resolve credentials for the selected model
     let config_guard = state.config.read().await;
-    let api_key = config_guard
-        .get_api_key("gemini") // TODO: Determine provider from model
-        .ok_or_else(|| ApiError::api_key_error("API key not configured"))?
-        .clone();
+    let credentials = resolve_model_credentials(&model, &config_guard)?;
+
+    // Gemini key is optional — only needed for query rewriting, RAG, and title generation
+    let gemini_key: Option<String> = config_guard.get_api_key("gemini").cloned();
     drop(config_guard);
 
     // 1. Save user message
@@ -226,26 +289,44 @@ pub async fn stream_chat(
         })
         .collect();
 
-    // 3. Rewrite query with history context (optional - use original if rewriting fails)
-    let rewritten_query = rag::rewrite_query_streaming(&user_message, &history, &api_key)
-        .await
-        .unwrap_or_else(|e| {
-            log::warn!("Query rewriting failed: {}, using original query", e);
-            user_message.clone()
-        });
+    // 3. Rewrite query with history context — skip gracefully if no Gemini key
+    let rewritten_query = if let Some(ref gkey) = gemini_key {
+        rag::rewrite_query_streaming(&user_message, &history, gkey)
+            .await
+            .unwrap_or_else(|e| {
+                log::warn!("Query rewriting failed: {}, using original query", e);
+                user_message.clone()
+            })
+    } else {
+        log::info!("No Gemini key — skipping query rewriting, using original query");
+        user_message.clone()
+    };
 
-    // 4. Retrieve relevant chunks via RAG
-    let chunks = rag::retrieve_chunks(&rewritten_query, &document_id, &db, &api_key, 5)
-        .await
-        .map_err(|e| ApiError::internal_error(format!("Failed to retrieve chunks: {}", e)))?;
+    // 4. Retrieve relevant chunks via RAG — skip gracefully if no Gemini key
+    let chunks = if let Some(ref gkey) = gemini_key {
+        rag::retrieve_chunks(&rewritten_query, &document_id, &db, gkey, 5)
+            .await
+            .unwrap_or_else(|e| {
+                log::warn!("RAG retrieval failed: {}, using empty chunks", e);
+                vec![]
+            })
+    } else {
+        log::info!("No Gemini key — skipping RAG retrieval, using empty chunks");
+        vec![]
+    };
 
     // 5. Build RAG context
     let rag_messages = rag::build_rag_context(&chunks, &history, &user_message, 5);
 
     // 6. Stream from LLM
-    let mut stream = llm::stream_chat(rag_messages, model.clone(), api_key.clone())
-        .await
-        .map_err(|e| ApiError::internal_error(format!("Failed to start streaming: {}", e)))?;
+    let mut stream = llm::stream_chat(
+        rag_messages,
+        credentials.model.clone(),
+        credentials.api_key.clone(),
+        credentials.base_url_override.clone(),
+    )
+    .await
+    .map_err(|e| ApiError::internal_error(format!("Failed to start streaming: {}", e)))?;
 
     let mut full_response = String::new();
 
@@ -293,32 +374,37 @@ pub async fn stream_chat(
         .map_err(|e| ApiError::internal_error(e.to_string()))?;
 
     // 8. Trigger title generation if this is the first exchange (background task)
+    //    Only possible when a Gemini key is available (title generation uses Gemini).
     let message_count = db::chat::count_messages(&db, &chat_id).await.unwrap_or(0);
 
     if message_count == 2 {
         // First exchange
-        let db_clone = db.clone();
-        let chat_id_clone = chat_id.clone();
-        let model_clone = model.clone();
-        let on_event_clone = on_event.clone();
+        if let Some(gkey) = gemini_key {
+            let db_clone = db.clone();
+            let chat_id_clone = chat_id.clone();
+            let model_clone = credentials.model.clone();
+            let on_event_clone = on_event.clone();
 
-        tauri::async_runtime::spawn(async move {
-            match generate_chat_title(&db_clone, &chat_id_clone, &api_key, &model_clone).await {
-                Ok(Some((title, updated_at))) => {
-                    if let Err(e) = on_event_clone.send(ChatStreamEvent::TitleUpdated {
-                        chat_id: chat_id_clone,
-                        title,
-                        updated_at,
-                    }) {
-                        log::warn!("Failed to send title update event: {}", e);
+            tauri::async_runtime::spawn(async move {
+                match generate_chat_title(&db_clone, &chat_id_clone, &gkey, &model_clone).await {
+                    Ok(Some((title, updated_at))) => {
+                        if let Err(e) = on_event_clone.send(ChatStreamEvent::TitleUpdated {
+                            chat_id: chat_id_clone,
+                            title,
+                            updated_at,
+                        }) {
+                            log::warn!("Failed to send title update event: {}", e);
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        log::error!("Failed to generate chat title: {}", e);
                     }
                 }
-                Ok(None) => {}
-                Err(e) => {
-                    log::error!("Failed to generate chat title: {}", e);
-                }
-            }
-        });
+            });
+        } else {
+            log::info!("No Gemini key — skipping title generation");
+        }
     }
 
     Ok(())

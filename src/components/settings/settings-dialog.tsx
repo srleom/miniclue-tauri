@@ -1,5 +1,5 @@
+import { Cpu, Key } from 'lucide-react';
 import * as React from 'react';
-import { Key, Cpu } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -16,15 +16,14 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from '@/components/ui/sidebar';
-
-// Import existing components
-import { ProviderListWrapper } from './provider-list-wrapper';
-import { APIKeyHeader } from './api-key-header';
-import { ModelsList } from './models-list';
-import { ModelsHeader } from './models-header';
-import { providers } from './provider-constants';
 import type { Provider } from '@/lib/types';
 import { useModels } from '../../hooks/use-queries';
+import { APIKeyHeader } from './api-key-header';
+import { ModelsHeader } from './models-header';
+import { ModelsList } from './models-list';
+import { providers } from './provider-constants';
+// Import existing components
+import { ProviderListWrapper } from './provider-list-wrapper';
 
 const navItems = [
   { name: 'API Keys', icon: Key, value: 'api-keys' },
@@ -77,10 +76,9 @@ export function SettingsDialog({
     deepseek: providersWithKeys.includes('deepseek'),
   };
 
-  // Prepare providers with models
+  // Prepare providers with models — custom providers use string keys starting with "custom:"
   const providersWithModels =
     modelsData?.providers?.map((p) => {
-      const provider = p.provider as Provider;
       const models =
         p.models
           ?.map((m) => ({
@@ -89,19 +87,35 @@ export function SettingsDialog({
             enabled: Boolean(m.enabled),
           }))
           .filter((m) => m.id !== '') ?? [];
-      return { provider, models };
+      return { provider: p.provider, models };
     }) ?? [];
 
-  const providersData = providers.map((p) => {
+  // Standard providers (non-custom)
+  const providersData: {
+    provider: string;
+    models: { id: string; name: string; enabled: boolean }[];
+    hasKey: boolean;
+  }[] = providers.map((p) => {
     const providerModels = providersWithModels.find(
       (pm) => pm.provider === p.id
     );
     return {
-      provider: p.id as Provider,
+      provider: p.id as string,
       models: providerModels?.models ?? [],
       hasKey: apiKeysStatus[p.id] ?? false,
     };
   });
+
+  // Custom providers from modelsData
+  const customProviderData = providersWithModels
+    .filter((pm) => pm.provider.startsWith('custom:'))
+    .map((pm) => ({
+      provider: pm.provider,
+      models: pm.models,
+      hasKey: true,
+    }));
+
+  const allProvidersData = [...providersData, ...customProviderData];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -159,7 +173,7 @@ export function SettingsDialog({
                     <h2 className="text-muted-foreground mb-4 text-sm font-medium tracking-tighter uppercase">
                       Available Models
                     </h2>
-                    <ModelsList providers={providersData} />
+                    <ModelsList providers={allProvidersData} />
                   </div>
                 </div>
               )}
