@@ -11,12 +11,17 @@ import type {
   CustomProviderResponse,
   Document,
   DocumentUpdate,
+  DownloadProgress,
   Folder,
   FolderCreate,
   FolderUpdate,
+  HardwareProfile,
   ImportDocumentRequest,
+  LlamaStatus,
+  LocalModelStatus,
   Message,
   MessageResponse,
+  ModelCatalog,
   ModelsResponse,
   ModelToggle,
   Provider,
@@ -321,3 +326,43 @@ export const storeCustomProvider = async (
 export const deleteCustomProvider = async (id: string): Promise<void> => {
   unwrap(await commands.deleteCustomProvider(id));
 };
+
+// Local AI commands
+export const getHardwareProfile = async (): Promise<HardwareProfile> => {
+  return unwrap(await commands.getHardwareProfile());
+};
+
+export const getModelCatalog = async (): Promise<ModelCatalog> => {
+  return unwrap(await commands.getModelCatalog());
+};
+
+export const getRecommendedModelId = async (): Promise<string> => {
+  return unwrap(await commands.getRecommendedModelId());
+};
+
+export const getLocalModelStatus = async (
+  modelId: string
+): Promise<LocalModelStatus> => {
+  return unwrap(await commands.getLocalModelStatus(modelId));
+};
+
+export const downloadLocalModel = async (modelId: string): Promise<string> => {
+  return unwrap(await commands.downloadLocalModel(modelId));
+};
+
+export const deleteLocalModel = async (modelId: string): Promise<void> => {
+  unwrap(await commands.deleteLocalModel(modelId));
+};
+
+export const setLocalChatEnabled = async (
+  enabled: boolean,
+  modelId?: string | null
+): Promise<void> => {
+  unwrap(await commands.setLocalChatEnabled(enabled, modelId ?? null));
+};
+
+export const getLlamaServerStatus = async (): Promise<LlamaStatus> => {
+  return unwrap(await commands.getLlamaServerStatus());
+};
+
+export type { DownloadProgress };

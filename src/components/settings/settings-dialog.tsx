@@ -1,4 +1,4 @@
-import { Cpu, Key } from 'lucide-react';
+import { Cpu, Key, Sparkles } from 'lucide-react';
 import * as React from 'react';
 import {
   Dialog,
@@ -19,6 +19,7 @@ import {
 import type { Provider } from '@/lib/types';
 import { useModels } from '../../hooks/use-queries';
 import { APIKeyHeader } from './api-key-header';
+import { LocalAITab } from './local-ai-tab';
 import { ModelsHeader } from './models-header';
 import { ModelsList } from './models-list';
 import { providers } from './provider-constants';
@@ -26,24 +27,29 @@ import { providers } from './provider-constants';
 import { ProviderListWrapper } from './provider-list-wrapper';
 
 const navItems = [
+  { name: 'Local AI', icon: Sparkles, value: 'local-ai' },
   { name: 'API Keys', icon: Key, value: 'api-keys' },
   { name: 'Models', icon: Cpu, value: 'models' },
 ] as const;
+
+type NavValue = (typeof navItems)[number]['value'];
 
 interface SettingsDialogProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   children?: React.ReactNode;
+  initialTab?: NavValue;
 }
 
 export function SettingsDialog({
   open,
   onOpenChange,
   children,
+  initialTab,
 }: SettingsDialogProps) {
-  const [activeSection, setActiveSection] = React.useState<
-    'api-keys' | 'models'
-  >('api-keys');
+  const [activeSection, setActiveSection] = React.useState<NavValue>(
+    initialTab ?? 'local-ai'
+  );
 
   const { data: modelsData, error: modelsError } = useModels();
 
@@ -154,6 +160,8 @@ export function SettingsDialog({
 
           <main className="flex h-[600px] flex-1 flex-col overflow-hidden py-8 px-6">
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0">
+              {activeSection === 'local-ai' && <LocalAITab />}
+
               {activeSection === 'api-keys' && (
                 <div>
                   <APIKeyHeader />

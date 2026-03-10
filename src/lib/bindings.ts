@@ -220,6 +220,73 @@ async streamChat(request: StreamChatRequest, onEvent: TAURI_CHANNEL<ChatStreamEv
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * Detect and return the hardware profile of the current machine.
+ */
+async getHardwareProfile() : Promise<Result<HardwareProfile, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_hardware_profile") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getModelCatalog() : Promise<Result<ModelCatalog, ApiError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_model_catalog") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getRecommendedModelId() : Promise<Result<string, ApiError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_recommended_model_id") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getLocalModelStatus(modelId: string) : Promise<Result<LocalModelStatus, ApiError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_local_model_status", { modelId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async downloadLocalModel(modelId: string) : Promise<Result<string, ApiError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("download_local_model", { modelId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async deleteLocalModel(modelId: string) : Promise<Result<null, ApiError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("delete_local_model", { modelId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setLocalChatEnabled(enabled: boolean, modelId: string | null) : Promise<Result<null, ApiError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_local_chat_enabled", { enabled, modelId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getLlamaServerStatus() : Promise<Result<LlamaStatus, ApiError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_llama_server_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -258,6 +325,82 @@ export type DocumentUpdate = { title: string | null; folder_id: string | null; a
 export type FolderCreate = { title: string; description: string | null; is_default: boolean | null }
 export type FolderResponse = { id: string; title: string; description: string; is_default: boolean; created_at: string; updated_at: string }
 export type FolderUpdate = { title: string | null; description: string | null }
+/**
+ * Classification of the GPU available on this machine.
+ */
+export type GpuClass = 
+/**
+ * Apple Silicon unified-memory GPU (Metal backend).
+ */
+"apple_silicon" | 
+/**
+ * Discrete NVIDIA GPU (Vulkan / DX12).
+ */
+"nvidia_discrete" | 
+/**
+ * Discrete AMD GPU (Vulkan / DX12).
+ */
+"amd_discrete" | 
+/**
+ * Intel integrated GPU.
+ */
+"intel_integrated" | 
+/**
+ * Any other integrated GPU not covered above.
+ */
+"other_integrated" | 
+/**
+ * Any other discrete GPU not covered above.
+ */
+"other_discrete" | 
+/**
+ * Software / CPU renderer (llvmpipe, WARP, SwiftShader).
+ */
+"cpu_only" | 
+/**
+ * No GPU adapter could be enumerated.
+ */
+"unknown"
+/**
+ * Snapshot of hardware relevant to LLM inference.
+ */
+export type HardwareProfile = { 
+/**
+ * Total system RAM in bytes (encoded as f64 for TypeScript compatibility).
+ */
+totalRamBytes: number; 
+/**
+ * Number of physical CPU cores (excludes hyperthreads).
+ */
+physicalCores: number; 
+/**
+ * Number of logical CPU cores (includes hyperthreads).
+ */
+logicalCores: number; 
+/**
+ * CPU brand string, e.g. `"Apple M2 Pro"` or `"Intel Core i9-13900K"`.
+ */
+cpuBrand: string; 
+/**
+ * Compile-time CPU architecture: `"aarch64"` or `"x86_64"`.
+ */
+cpuArch: string; 
+/**
+ * Whether this machine is Apple Silicon (aarch64 + macOS).
+ */
+isAppleSilicon: boolean; 
+/**
+ * Best GPU class detected.
+ */
+gpuClass: GpuClass; 
+/**
+ * Human-readable GPU name, empty string if unknown.
+ */
+gpuName: string; 
+/**
+ * Available disk space (bytes) on the app-data volume (encoded as f64 for TypeScript compatibility).
+ */
+availableDiskBytes: number }
 export type ImportDocumentRequest = { file_paths: string[]; folder_id: string | null }
 export type MessageResponse = { id: string; chat_id: string; role: string; parts: string; metadata: string; created_at: string }
 export type ModelToggle = { id: string; name: string; enabled: boolean }
@@ -269,6 +412,11 @@ export type StreamChatRequest = { document_id: string; chat_id: string; message:
 export type TAURI_CHANNEL<TSend> = null
 export type UserFolder = { id: string; title: string; description: string; is_default: boolean; updated_at: string; documents?: UserFolderDocument[] | null }
 export type UserFolderDocument = { id: string; title: string; status: string; folder_id: string }
+export type ModelEntry = { id: string; name: string; description: string; sizeBytes: number; sha256: string | null; hfRepo: string; hfFilename: string; minRamGb: number; isDefault: boolean; supersededBy: string | null; tags: string[] }
+export type ModelCatalog = { schemaVersion: number; updatedAt: string; models: ModelEntry[] }
+export type LocalModelStatus = { modelId: string; isDownloaded: boolean; path: string | null; sizeOnDisk: number }
+export type LlamaStatus = { embed: string; chat: string }
+export type DownloadProgress = { modelId: string; downloadedBytes: number; totalBytes: number }
 
 /** tauri-specta globals **/
 

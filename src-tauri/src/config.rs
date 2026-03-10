@@ -27,7 +27,15 @@ pub struct AppConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppSettings {
-    // Settings can be added here in the future
+    /// Whether the local chat model is enabled (downloaded and configured).
+    #[serde(default)]
+    pub local_chat_enabled: bool,
+    /// Absolute path to the local chat model GGUF file, if set.
+    #[serde(default)]
+    pub local_chat_model_path: Option<String>,
+    /// Human-readable ID of the chat model (e.g. "qwen3-4b-q4").
+    #[serde(default)]
+    pub local_chat_model_id: Option<String>,
 }
 
 impl AppConfig {

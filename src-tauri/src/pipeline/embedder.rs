@@ -1,231 +1,175 @@
+//! Embedder: calls the local llama-server embed endpoint.
+//!
+//! Uses the OpenAI-compatible `/v1/embeddings` API served by the bundled
+//! `llama-server` sidecar (port 28881).
+//!
+//! Model: nomic-embed-text-v1.5 — 768-dimensional output.
+//! Requires prefix `"search_document: "` on chunk text and
+//!             `"search_query: "`    on query text.
+
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use thiserror::Error;
 
+use crate::services::llama_server::EMBED_PORT;
+
+// ---------------------------------------------------------------------------
+// Error type
+// ---------------------------------------------------------------------------
+
 #[derive(Error, Debug)]
 pub enum EmbedderError {
+    #[error("Embed server not available: {0}")]
+    ServerUnavailable(String),
     #[error("API request failed: {0}")]
     ApiError(String),
-    #[error("Invalid API key")]
-    InvalidApiKey,
-    #[error("Rate limit exceeded")]
-    RateLimitExceeded,
     #[error("Network error: {0}")]
     NetworkError(String),
 }
 
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone)]
 pub struct ChunkEmbedding {
     pub chunk_id: String,
-    pub vector: Vec<f32>, // 1536 dimensions for gemini-embedding-001 (backward compatible)
+    pub vector: Vec<f32>, // 768 dimensions (nomic-embed-text-v1.5)
     pub page_number: i64,
 }
 
-#[derive(Serialize)]
-struct EmbedRequest {
-    model: String,
-    content: EmbedContent,
-    #[serde(rename = "taskType")]
-    task_type: String,
-    #[serde(
-        rename = "outputDimensionality",
-        skip_serializing_if = "Option::is_none"
-    )]
-    output_dimensionality: Option<i32>,
-}
+// ---------------------------------------------------------------------------
+// OpenAI-compatible request / response structs
+// ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
-struct EmbedContent {
-    parts: Vec<TextPart>,
-}
-
-#[derive(Serialize)]
-struct TextPart {
-    text: String,
+struct EmbedRequest<'a> {
+    model: &'a str,
+    input: Vec<String>,
 }
 
 #[derive(Deserialize)]
 struct EmbedResponse {
-    embedding: EmbeddingData,
+    data: Vec<EmbedData>,
 }
 
 #[derive(Deserialize)]
-struct EmbeddingData {
-    values: Vec<f32>,
+struct EmbedData {
+    #[allow(dead_code)]
+    index: usize,
+    embedding: Vec<f32>,
 }
 
-// Batch API request/response types
-#[derive(Serialize)]
-struct BatchEmbedRequest {
-    requests: Vec<EmbedRequest>,
-}
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-#[derive(Deserialize)]
-struct BatchEmbedResponse {
-    embeddings: Vec<EmbeddingData>,
-}
-
-const GEMINI_EMBEDDING_API_URL: &str =
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent";
-const GEMINI_BATCH_EMBEDDING_API_URL: &str =
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents";
 const MAX_RETRIES: u32 = 3;
+const BATCH_SIZE: usize = 64; // nomic handles up to 8192 tokens; 64 chunks is safe
 
-/// Generate embeddings using Gemini Batch API
-/// Sends all chunks in a single batch request for maximum efficiency
+fn embed_url() -> String {
+    format!("http://127.0.0.1:{EMBED_PORT}/v1/embeddings")
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/// Generate document embeddings for a batch of chunks.
+///
+/// `chunks` is a list of `(chunk_id, text, page_number)`.
+/// Adds the `"search_document: "` prefix required by nomic-embed-text-v1.5.
 pub async fn generate_embeddings(
-    chunks: &[(String, String, i64)], // (chunk_id, text, page_number)
-    api_key: &str,
+    chunks: &[(String, String, i64)],
 ) -> Result<Vec<ChunkEmbedding>, EmbedderError> {
     if chunks.is_empty() {
         return Ok(Vec::new());
     }
 
-    // Create client with longer timeout for batch requests
     let client = Client::builder()
         .timeout(Duration::from_secs(120))
         .build()
         .map_err(|e| EmbedderError::NetworkError(e.to_string()))?;
 
     log::info!(
-        "Generating embeddings for {} chunks in single batch request",
+        "Generating local embeddings for {} chunks (batches of {BATCH_SIZE})",
         chunks.len()
     );
 
-    // Build batch request with all chunks
-    let requests: Vec<EmbedRequest> = chunks
-        .iter()
-        .map(|(_, text, _)| EmbedRequest {
-            model: "models/gemini-embedding-001".to_string(),
-            content: EmbedContent {
-                parts: vec![TextPart { text: text.clone() }],
-            },
-            task_type: "RETRIEVAL_DOCUMENT".to_string(),
-            output_dimensionality: Some(1536),
-        })
-        .collect();
+    let mut all_embeddings: Vec<ChunkEmbedding> = Vec::with_capacity(chunks.len());
 
-    let batch_request = BatchEmbedRequest { requests };
+    for batch in chunks.chunks(BATCH_SIZE) {
+        let inputs: Vec<String> = batch
+            .iter()
+            .map(|(_, text, _)| format!("search_document: {text}"))
+            .collect();
 
-    // Make batch API call with retry logic
-    let response = make_batch_request_with_retry(&client, &batch_request, api_key).await?;
+        let vectors = embed_batch(&client, inputs).await?;
 
-    // Map responses back to chunks
-    if response.embeddings.len() != chunks.len() {
-        return Err(EmbedderError::ApiError(format!(
-            "Expected {} embeddings but got {}",
-            chunks.len(),
-            response.embeddings.len()
-        )));
+        if vectors.len() != batch.len() {
+            return Err(EmbedderError::ApiError(format!(
+                "Expected {} embeddings from server but got {}",
+                batch.len(),
+                vectors.len()
+            )));
+        }
+
+        for ((chunk_id, _, page_number), vector) in batch.iter().zip(vectors.into_iter()) {
+            all_embeddings.push(ChunkEmbedding {
+                chunk_id: chunk_id.clone(),
+                vector,
+                page_number: *page_number,
+            });
+        }
     }
 
-    let embeddings: Vec<ChunkEmbedding> = chunks
-        .iter()
-        .zip(response.embeddings.iter())
-        .map(|((chunk_id, _, page_number), embedding)| ChunkEmbedding {
-            chunk_id: chunk_id.clone(),
-            vector: embedding.values.clone(),
-            page_number: *page_number,
-        })
-        .collect();
-
-    log::info!("Successfully generated {} embeddings", embeddings.len());
-
-    Ok(embeddings)
+    log::info!("Successfully generated {} embeddings", all_embeddings.len());
+    Ok(all_embeddings)
 }
 
-/// Make batch embedding request with exponential backoff retry
-async fn make_batch_request_with_retry(
-    client: &Client,
-    batch_request: &BatchEmbedRequest,
-    api_key: &str,
-) -> Result<BatchEmbedResponse, EmbedderError> {
-    let mut retries = 0;
-
-    loop {
-        let response = client
-            .post(GEMINI_BATCH_EMBEDDING_API_URL)
-            .header("x-goog-api-key", api_key)
-            .header("Content-Type", "application/json")
-            .json(&batch_request)
-            .send()
-            .await
-            .map_err(|e| EmbedderError::NetworkError(e.to_string()))?;
-
-        let status = response.status();
-
-        if status.is_success() {
-            return response
-                .json::<BatchEmbedResponse>()
-                .await
-                .map_err(|e| EmbedderError::ApiError(format!("JSON parse error: {}", e)));
-        }
-
-        // Handle errors
-        if status == 401 || status == 403 {
-            return Err(EmbedderError::InvalidApiKey);
-        }
-
-        if status == 429 {
-            if retries < MAX_RETRIES {
-                retries += 1;
-                let delay = 2_u64.pow(retries) * 1000; // Exponential backoff
-                log::warn!(
-                    "Rate limited, retrying in {}ms (attempt {}/{})",
-                    delay,
-                    retries,
-                    MAX_RETRIES
-                );
-                tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
-                continue;
-            }
-            return Err(EmbedderError::RateLimitExceeded);
-        }
-
-        let error_text = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(EmbedderError::ApiError(format!(
-            "HTTP {}: {}",
-            status, error_text
-        )));
-    }
-}
-
-/// Generate a single query embedding (still uses single-item API for queries)
-pub async fn generate_query_embedding(
-    query: &str,
-    api_key: &str,
-) -> Result<Vec<f32>, EmbedderError> {
-    // Create client with 30 second timeout
+/// Generate a single query embedding.
+///
+/// Adds the `"search_query: "` prefix required by nomic-embed-text-v1.5.
+pub async fn generate_query_embedding(query: &str) -> Result<Vec<f32>, EmbedderError> {
     let client = Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
         .map_err(|e| EmbedderError::NetworkError(e.to_string()))?;
 
-    let mut retries = 0;
+    let input = format!("search_query: {query}");
+    let mut vectors = embed_batch(&client, vec![input]).await?;
 
+    vectors
+        .pop()
+        .ok_or_else(|| EmbedderError::ApiError("Empty embedding response".to_string()))
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+async fn embed_batch(client: &Client, inputs: Vec<String>) -> Result<Vec<Vec<f32>>, EmbedderError> {
+    let url = embed_url();
+    let request_body = EmbedRequest {
+        model: "nomic-embed-text-v1.5",
+        input: inputs,
+    };
+
+    let mut retries = 0u32;
     loop {
-        let request = EmbedRequest {
-            model: "models/gemini-embedding-001".to_string(),
-            content: EmbedContent {
-                parts: vec![TextPart {
-                    text: query.to_string(),
-                }],
-            },
-            task_type: "RETRIEVAL_QUERY".to_string(),
-            output_dimensionality: Some(1536),
-        };
-
         let response = client
-            .post(GEMINI_EMBEDDING_API_URL)
-            .header("x-goog-api-key", api_key)
-            .json(&request)
+            .post(&url)
+            .json(&request_body)
             .send()
             .await
-            .map_err(|e| EmbedderError::NetworkError(e.to_string()))?;
+            .map_err(|e| {
+                if e.is_connect() || e.is_timeout() {
+                    EmbedderError::ServerUnavailable(e.to_string())
+                } else {
+                    EmbedderError::NetworkError(e.to_string())
+                }
+            })?;
 
         let status = response.status();
 
@@ -233,44 +177,32 @@ pub async fn generate_query_embedding(
             let embed_response: EmbedResponse = response
                 .json()
                 .await
-                .map_err(|e| EmbedderError::ApiError(e.to_string()))?;
+                .map_err(|e| EmbedderError::ApiError(format!("JSON parse error: {e}")))?;
 
-            return Ok(embed_response.embedding.values);
+            // llama-server returns data sorted by index; preserve order
+            let mut indexed: Vec<(usize, Vec<f32>)> = embed_response
+                .data
+                .into_iter()
+                .map(|d| (d.index, d.embedding))
+                .collect();
+            indexed.sort_by_key(|(i, _)| *i);
+            return Ok(indexed.into_iter().map(|(_, v)| v).collect());
         }
 
-        // Handle errors
-        if status == 401 || status == 403 {
-            return Err(EmbedderError::InvalidApiKey);
+        if (status.as_u16() == 503 || status.as_u16() == 429) && retries < MAX_RETRIES {
+            retries += 1;
+            let delay_ms = 500 * 2u64.pow(retries - 1);
+            log::warn!(
+                "Embed server returned {status}, retry {retries}/{MAX_RETRIES} in {delay_ms}ms"
+            );
+            tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+            continue;
         }
 
-        if status == 429 {
-            if retries < MAX_RETRIES {
-                retries += 1;
-                let delay = 2_u64.pow(retries) * 1000; // Exponential backoff
-                tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
-                continue;
-            }
-            return Err(EmbedderError::RateLimitExceeded);
-        }
-
-        let error_text = response
+        let body = response
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(EmbedderError::ApiError(format!(
-            "API error ({}): {}",
-            status, error_text
-        )));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_generate_query_embedding_invalid_key() {
-        let result = generate_query_embedding("test query", "invalid_key").await;
-        assert!(result.is_err());
+        return Err(EmbedderError::ApiError(format!("HTTP {status}: {body}")));
     }
 }

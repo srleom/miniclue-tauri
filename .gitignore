@@ -17,3 +17,6 @@ apps
 .opencode.json
 /assistant-ui/
 opencode.json
+# Local AI binaries and models (downloaded at build time)
+src-tauri/binaries/
+src-tauri/resources/models/

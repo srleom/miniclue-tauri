@@ -46,6 +46,16 @@ pub fn export_bindings() {
             commands::chat::delete_chat,
             commands::chat::list_messages,
             commands::chat::stream_chat,
+            // Hardware commands
+            commands::hardware::get_hardware_profile,
+            // Local model commands
+            commands::local_model::get_model_catalog,
+            commands::local_model::get_recommended_model_id,
+            commands::local_model::get_local_model_status,
+            commands::local_model::download_local_model,
+            commands::local_model::delete_local_model,
+            commands::local_model::set_local_chat_enabled,
+            commands::local_model::get_llama_server_status,
         ]);
 
     // Only export in debug builds (during development)

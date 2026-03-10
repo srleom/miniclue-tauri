@@ -11,10 +11,26 @@ use zip::ZipArchive;
 
 const PDFIUM_VERSION: &str = "7543";
 
+// llama.cpp server pinned build
+const LLAMA_BUILD: &str = "b4641";
+
+// Nomic embed model
+const NOMIC_EMBED_MODEL: &str = "nomic-embed-text-v1.5.Q5_K_M.gguf";
+const NOMIC_EMBED_URL: &str = "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q5_K_M.gguf";
+
 struct TargetConfig {
     id: &'static str,
     library_filename: &'static str,
     asset_filenames: &'static [&'static str],
+}
+
+struct LlamaTarget {
+    /// Tauri sidecar target triple (used for binary naming)
+    triple: &'static str,
+    /// GitHub release asset filename
+    asset_filename: &'static str,
+    /// Name of the `llama-server` (or `llama-server.exe`) inside the archive
+    binary_name: &'static str,
 }
 
 fn main() {
@@ -22,6 +38,14 @@ fn main() {
 
     if let Err(error) = ensure_pdfium_binary() {
         panic!("Failed to provision Pdfium binary: {error}");
+    }
+
+    if let Err(error) = ensure_llama_server_binary() {
+        panic!("Failed to provision llama-server binary: {error}");
+    }
+
+    if let Err(error) = ensure_nomic_embed_model() {
+        panic!("Failed to provision nomic-embed-text model: {error}");
     }
 
     tauri_build::build();
@@ -169,6 +193,169 @@ fn ensure_pdfium_binary() -> Result<(), String> {
         target.asset_filenames.join(", "),
         download_errors.join("\n")
     ))
+}
+
+fn ensure_llama_server_binary() -> Result<(), String> {
+    let target_os =
+        env::var("CARGO_CFG_TARGET_OS").map_err(|e| format!("Missing CARGO_CFG_TARGET_OS: {e}"))?;
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH")
+        .map_err(|e| format!("Missing CARGO_CFG_TARGET_ARCH: {e}"))?;
+    let manifest_dir = PathBuf::from(
+        env::var("CARGO_MANIFEST_DIR").map_err(|e| format!("Missing CARGO_MANIFEST_DIR: {e}"))?,
+    );
+
+    let llama_target = resolve_llama_target(&target_os, &target_arch).ok_or_else(|| {
+        format!(
+            "llama-server: unsupported target {target_os}/{target_arch}. \
+             Supported: macOS aarch64/x86_64, Linux x86_64, Windows x86_64."
+        )
+    })?;
+
+    // Tauri sidecars live at src-tauri/binaries/
+    let binaries_dir = manifest_dir.join("binaries");
+    let ext = if target_os == "windows" { ".exe" } else { "" };
+    let sidecar_name = format!("llama-server-{}{}", llama_target.triple, ext);
+    let sidecar_path = binaries_dir.join(&sidecar_name);
+
+    if sidecar_path.exists() {
+        println!(
+            "cargo:warning=Using cached llama-server at {}",
+            sidecar_path.display()
+        );
+        return Ok(());
+    }
+
+    fs::create_dir_all(&binaries_dir).map_err(|e| format!("Failed to create binaries dir: {e}"))?;
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").map_err(|e| format!("Missing OUT_DIR: {e}"))?);
+    let download_dir = out_dir.join("llama-download");
+    let extract_dir = out_dir.join("llama-extract");
+
+    for d in [&download_dir, &extract_dir] {
+        if d.exists() {
+            fs::remove_dir_all(d).ok();
+        }
+        fs::create_dir_all(d).map_err(|e| format!("Failed to create temp dir: {e}"))?;
+    }
+
+    let url = format!(
+        "https://github.com/ggml-org/llama.cpp/releases/download/{build}/{asset}",
+        build = LLAMA_BUILD,
+        asset = llama_target.asset_filename,
+    );
+
+    println!("cargo:warning=Downloading llama-server from {url}");
+
+    let client = Client::builder()
+        .timeout(Duration::from_secs(300))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+
+    let archive_path = download_dir.join(llama_target.asset_filename);
+    download_file(&client, &url, &archive_path)
+        .map_err(|e| format!("Download failed for {url}: {e}"))?;
+
+    extract_archive(&archive_path, &extract_dir).map_err(|e| format!("Extraction failed: {e}"))?;
+
+    // Find llama-server binary inside extracted contents
+    let binary_os_name = OsStr::new(llama_target.binary_name);
+    let found = find_file_recursive(&extract_dir, binary_os_name).ok_or_else(|| {
+        format!(
+            "llama-server binary '{}' not found in extracted archive",
+            llama_target.binary_name
+        )
+    })?;
+
+    fs::copy(&found, &sidecar_path).map_err(|e| {
+        format!(
+            "Failed to copy llama-server to {}: {e}",
+            sidecar_path.display()
+        )
+    })?;
+
+    // Make executable on Unix
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&sidecar_path)
+            .map_err(|e| format!("Failed to read permissions: {e}"))?
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&sidecar_path, perms)
+            .map_err(|e| format!("Failed to set executable permissions: {e}"))?;
+    }
+
+    println!(
+        "cargo:warning=Downloaded llama-server {} for {}/{} to {}",
+        LLAMA_BUILD,
+        target_os,
+        target_arch,
+        sidecar_path.display()
+    );
+
+    Ok(())
+}
+
+fn resolve_llama_target(target_os: &str, target_arch: &str) -> Option<LlamaTarget> {
+    match (target_os, target_arch) {
+        ("macos", "aarch64") => Some(LlamaTarget {
+            triple: "aarch64-apple-darwin",
+            asset_filename: "llama-b4641-bin-macos-arm64.zip",
+            binary_name: "llama-server",
+        }),
+        ("macos", "x86_64") => Some(LlamaTarget {
+            triple: "x86_64-apple-darwin",
+            asset_filename: "llama-b4641-bin-macos-x64.zip",
+            binary_name: "llama-server",
+        }),
+        ("linux", "x86_64") => Some(LlamaTarget {
+            triple: "x86_64-unknown-linux-gnu",
+            asset_filename: "llama-b4641-bin-ubuntu-x64.zip",
+            binary_name: "llama-server",
+        }),
+        ("windows", "x86_64") => Some(LlamaTarget {
+            triple: "x86_64-pc-windows-msvc",
+            asset_filename: "llama-b4641-bin-win-cpu-x64.zip",
+            binary_name: "llama-server.exe",
+        }),
+        _ => None,
+    }
+}
+
+fn ensure_nomic_embed_model() -> Result<(), String> {
+    let manifest_dir = PathBuf::from(
+        env::var("CARGO_MANIFEST_DIR").map_err(|e| format!("Missing CARGO_MANIFEST_DIR: {e}"))?,
+    );
+
+    let models_dir = manifest_dir.join("resources").join("models");
+    let model_path = models_dir.join(NOMIC_EMBED_MODEL);
+
+    if model_path.exists() {
+        println!(
+            "cargo:warning=Using cached nomic-embed model at {}",
+            model_path.display()
+        );
+        return Ok(());
+    }
+
+    fs::create_dir_all(&models_dir).map_err(|e| format!("Failed to create models dir: {e}"))?;
+
+    println!("cargo:warning=Downloading nomic-embed-text model (99 MB)...");
+
+    let client = Client::builder()
+        .timeout(Duration::from_secs(600))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+
+    download_file(&client, NOMIC_EMBED_URL, &model_path)
+        .map_err(|e| format!("Failed to download nomic model: {e}"))?;
+
+    println!(
+        "cargo:warning=Downloaded nomic-embed-text model to {}",
+        model_path.display()
+    );
+
+    Ok(())
 }
 
 fn resolve_target_config(target_os: &str, target_arch: &str) -> Option<TargetConfig> {

@@ -160,6 +160,22 @@ fn resolve_model_credentials(
     model: &str,
     config: &AppConfig,
 ) -> Result<ModelCredentials, ApiError> {
+    // Local chat server — no API key required
+    if model == "local" || model.starts_with("local:") {
+        let model_id = model
+            .strip_prefix("local:")
+            .unwrap_or("local-model")
+            .to_string();
+        return Ok(ModelCredentials {
+            model: model_id,
+            api_key: String::new(),
+            base_url_override: Some(format!(
+                "http://127.0.0.1:{}/v1",
+                crate::services::llama_server::CHAT_PORT
+            )),
+        });
+    }
+
     if let Some(id) = model.strip_prefix("custom:") {
         let cp = config.get_custom_provider(id).ok_or_else(|| {
             ApiError::invalid_input(format!("Custom provider '{}' not found", id))
@@ -302,18 +318,13 @@ pub async fn stream_chat(
         user_message.clone()
     };
 
-    // 4. Retrieve relevant chunks via RAG — skip gracefully if no Gemini key
-    let chunks = if let Some(ref gkey) = gemini_key {
-        rag::retrieve_chunks(&rewritten_query, &document_id, &db, gkey, 5)
-            .await
-            .unwrap_or_else(|e| {
-                log::warn!("RAG retrieval failed: {}, using empty chunks", e);
-                vec![]
-            })
-    } else {
-        log::info!("No Gemini key — skipping RAG retrieval, using empty chunks");
-        vec![]
-    };
+    // 4. Retrieve relevant chunks via RAG using local embed server
+    let chunks = rag::retrieve_chunks(&rewritten_query, &document_id, &db, 5)
+        .await
+        .unwrap_or_else(|e| {
+            log::warn!("RAG retrieval failed: {}, using empty chunks", e);
+            vec![]
+        });
 
     // 5. Build RAG context
     let rag_messages = rag::build_rag_context(&chunks, &history, &user_message, 5);

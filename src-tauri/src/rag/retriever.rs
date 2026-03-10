@@ -25,11 +25,10 @@ pub async fn retrieve_chunks(
     query: &str,
     document_id: &str,
     db: &SqlitePool,
-    api_key: &str,
     top_k: i64,
 ) -> Result<Vec<RetrievedChunk>, RetrieverError> {
-    // Generate query embedding using RETRIEVAL_QUERY task type
-    let query_vector = embedder::generate_query_embedding(query, api_key).await?;
+    // Generate query embedding using local embed server
+    let query_vector = embedder::generate_query_embedding(query).await?;
 
     // Retrieve similar chunks from database
     let results =

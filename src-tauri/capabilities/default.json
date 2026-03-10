@@ -12,6 +12,9 @@
     "fs:default",
     "fs:allow-app-read",
     "fs:allow-app-write",
-    "opener:allow-open-url"
+    "opener:allow-open-url",
+    "shell:allow-execute",
+    "shell:allow-spawn",
+    "shell:allow-kill"
   ]
 }

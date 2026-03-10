@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod db;
 mod error;
+mod hardware;
 mod models;
 mod pipeline;
 mod rag;
@@ -20,6 +21,7 @@ pub fn run() {
     bindings::export_bindings();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -39,6 +41,19 @@ pub fn run() {
                     .expect("Failed to initialize app state");
                 app_handle.manage(state);
             });
+
+            // Start the embed server in the background (non-blocking).
+            // The app window opens immediately; the server warms up in ~1-2s.
+            {
+                let state = app.handle().state::<AppState>();
+                state
+                    .llama_server
+                    .start_embed_server_background(app.handle().clone());
+                // Refresh model catalog from remote in background
+                state
+                    .model_manager
+                    .refresh_catalog_background(app.handle().clone());
+            }
 
             Ok(())
         })
@@ -74,6 +89,16 @@ pub fn run() {
             commands::chat::delete_chat,
             commands::chat::list_messages,
             commands::chat::stream_chat,
+            // Hardware commands
+            commands::hardware::get_hardware_profile,
+            // Local model commands
+            commands::local_model::get_model_catalog,
+            commands::local_model::get_recommended_model_id,
+            commands::local_model::get_local_model_status,
+            commands::local_model::download_local_model,
+            commands::local_model::delete_local_model,
+            commands::local_model::set_local_chat_enabled,
+            commands::local_model::get_llama_server_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
