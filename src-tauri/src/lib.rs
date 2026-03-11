@@ -29,7 +29,7 @@ pub fn run() {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
+                        .level(log::LevelFilter::Debug)
                         .build(),
                 )?;
             }
@@ -49,6 +49,27 @@ pub fn run() {
                 state
                     .llama_server
                     .start_embed_server_background(app.handle().clone());
+
+                // Start the chat server eagerly if a local model is already configured.
+                // This runs in parallel with embed-server warmup so that by the time
+                // the user opens a document and types their first message, the server
+                // is already warm — zero cold-start on subsequent launches.
+                let model_path = state
+                    .config
+                    .blocking_read()
+                    .settings
+                    .local_chat_model_path
+                    .clone();
+                if let Some(path) = model_path {
+                    log::info!(
+                        "[startup] local chat model configured — pre-warming chat server: {}",
+                        path
+                    );
+                    state
+                        .llama_server
+                        .start_chat_server_background(app.handle().clone(), path);
+                }
+
                 // Refresh model catalog from remote in background
                 state
                     .model_manager

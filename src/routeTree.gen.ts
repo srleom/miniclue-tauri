@@ -41,8 +41,8 @@ const AppDocumentDocumentIdRoute = AppDocumentDocumentIdRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  "/onboarding": typeof OnboardingRoute
   "/": typeof AppIndexRoute
+  "/onboarding": typeof OnboardingRoute
   "/document/$documentId": typeof AppDocumentDocumentIdRoute
   "/folder/$folderId": typeof AppFolderFolderIdRoute
 }
@@ -54,29 +54,29 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  "/onboarding": typeof OnboardingRoute
   "/_app": typeof AppRouteWithChildren
+  "/onboarding": typeof OnboardingRoute
   "/_app/": typeof AppIndexRoute
   "/_app/document/$documentId": typeof AppDocumentDocumentIdRoute
   "/_app/folder/$folderId": typeof AppFolderFolderIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: "/onboarding" | "/" | "/document/$documentId" | "/folder/$folderId"
+  fullPaths: "/" | "/onboarding" | "/document/$documentId" | "/folder/$folderId"
   fileRoutesByTo: FileRoutesByTo
   to: "/onboarding" | "/" | "/document/$documentId" | "/folder/$folderId"
   id:
     | "__root__"
-    | "/onboarding"
     | "/_app"
+    | "/onboarding"
     | "/_app/"
     | "/_app/document/$documentId"
     | "/_app/folder/$folderId"
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  OnboardingRoute: typeof OnboardingRoute
   AppRoute: typeof AppRouteWithChildren
+  OnboardingRoute: typeof OnboardingRoute
 }
 
 declare module "@tanstack/react-router" {
@@ -134,8 +134,8 @@ const AppRouteChildren: AppRouteChildren = {
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
-  OnboardingRoute: OnboardingRoute,
   AppRoute: AppRouteWithChildren,
+  OnboardingRoute: OnboardingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -34,7 +34,12 @@ function unwrap<T>(
   result: { status: 'ok'; data: T } | { status: 'error'; error: unknown }
 ): T {
   if (result.status === 'error') {
-    throw result.error;
+    const err = result.error;
+    // Rust ApiError is a plain object { code, message } — convert to a real Error
+    if (err !== null && typeof err === 'object' && 'message' in err) {
+      throw new Error((err as { message: string }).message);
+    }
+    throw new Error(String(err));
   }
   return result.data;
 }

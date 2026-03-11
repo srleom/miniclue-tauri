@@ -1,4 +1,4 @@
-import { Cpu, Key, Sparkles } from 'lucide-react';
+import { Cpu, Sparkles } from 'lucide-react';
 import * as React from 'react';
 import {
   Dialog,
@@ -18,18 +18,13 @@ import {
 } from '@/components/ui/sidebar';
 import type { Provider } from '@/lib/types';
 import { useModels } from '../../hooks/use-queries';
-import { APIKeyHeader } from './api-key-header';
 import { LocalAITab } from './local-ai-tab';
-import { ModelsHeader } from './models-header';
 import { ModelsList } from './models-list';
 import { providers } from './provider-constants';
-// Import existing components
-import { ProviderListWrapper } from './provider-list-wrapper';
 
 const navItems = [
   { name: 'Local AI', icon: Sparkles, value: 'local-ai' },
-  { name: 'API Keys', icon: Key, value: 'api-keys' },
-  { name: 'Models', icon: Cpu, value: 'models' },
+  { name: 'Providers', icon: Cpu, value: 'providers' },
 ] as const;
 
 type NavValue = (typeof navItems)[number]['value'];
@@ -162,25 +157,16 @@ export function SettingsDialog({
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0">
               {activeSection === 'local-ai' && <LocalAITab />}
 
-              {activeSection === 'api-keys' && (
+              {activeSection === 'providers' && (
                 <div>
-                  <APIKeyHeader />
-                  <div className="mt-8">
-                    <h2 className="text-muted-foreground mb-4 text-sm font-medium tracking-tighter uppercase">
-                      Provider Keys
-                    </h2>
-                    <ProviderListWrapper initialStatus={apiKeysStatus} />
+                  <div>
+                    <h1 className="text-2xl font-semibold">Providers</h1>
+                    <p className="text-muted-foreground mt-2">
+                      Manage API keys and enable the models you want available
+                      in chat.
+                    </p>
                   </div>
-                </div>
-              )}
-
-              {activeSection === 'models' && (
-                <div>
-                  <ModelsHeader />
                   <div className="mt-8">
-                    <h2 className="text-muted-foreground mb-4 text-sm font-medium tracking-tighter uppercase">
-                      Available Models
-                    </h2>
                     <ModelsList providers={allProvidersData} />
                   </div>
                 </div>

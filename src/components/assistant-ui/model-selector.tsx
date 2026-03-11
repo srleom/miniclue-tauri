@@ -20,9 +20,11 @@ const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   anthropic: 'Anthropic',
   xai: 'xAI',
   deepseek: 'DeepSeek',
+  local: 'On Device',
 };
 
 function getProviderDisplayName(providerKey: string): string {
+  if (providerKey.startsWith('custom:')) return 'Custom';
   return PROVIDER_DISPLAY_NAMES[providerKey] ?? providerKey;
 }
 

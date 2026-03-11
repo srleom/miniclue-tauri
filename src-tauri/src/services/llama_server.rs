@@ -89,7 +89,7 @@ impl LlamaServerManager {
                 embed.lock().await.status = ServerStatus::Starting;
             }
 
-            match spawn_embed_server(&app_handle).await {
+            match spawn_embed_server(&app_handle, Arc::clone(&embed)).await {
                 Ok(pid) => {
                     embed.lock().await.pid = pid;
                     log::info!("llama embed server spawned (pid={pid:?}), waiting for readiness…");
@@ -122,9 +122,51 @@ impl LlamaServerManager {
     // Chat server
     // -----------------------------------------------------------------------
 
-    /// Start the chat server for the given model path.
+    /// Start the chat server for the given model path in the background (non-blocking).
     ///
-    /// Waits up to 120 s for the server to become ready.
+    /// Returns immediately; the server warms up asynchronously.  It is safe to
+    /// call this multiple times — subsequent calls are no-ops if the server is
+    /// already starting or running.
+    pub fn start_chat_server_background(&self, app_handle: AppHandle, model_path: String) {
+        let chat = Arc::clone(&self.chat);
+        let app_handle_clone = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            let already_up = {
+                let guard = chat.lock().await;
+                matches!(guard.status, ServerStatus::Starting | ServerStatus::Running)
+            };
+            if already_up {
+                return;
+            }
+
+            {
+                chat.lock().await.status = ServerStatus::Starting;
+            }
+
+            match spawn_chat_server(&app_handle_clone, &model_path, Arc::clone(&chat)).await {
+                Ok(pid) => {
+                    chat.lock().await.pid = pid;
+                    log::info!("llama chat server spawned (pid={pid:?}), waiting for readiness…");
+                    match wait_for_server(CHAT_PORT, 120).await {
+                        Ok(()) => {
+                            chat.lock().await.status = ServerStatus::Running;
+                            log::info!("llama chat server ready on port {CHAT_PORT}");
+                        }
+                        Err(e) => {
+                            chat.lock().await.status = ServerStatus::Failed;
+                            log::error!("llama chat server failed to become ready: {e}");
+                        }
+                    }
+                }
+                Err(e) => {
+                    chat.lock().await.status = ServerStatus::Failed;
+                    log::error!("Failed to spawn llama chat server: {e}");
+                }
+            }
+        });
+    }
+
+    /// Start the chat server for the given model path (blocking — waits up to 120 s).
     pub async fn start_chat_server(
         &self,
         app_handle: &AppHandle,
@@ -139,7 +181,7 @@ impl LlamaServerManager {
 
         self.chat.lock().await.status = ServerStatus::Starting;
 
-        match spawn_chat_server(app_handle, model_path).await {
+        match spawn_chat_server(app_handle, model_path, Arc::clone(&self.chat)).await {
             Ok(pid) => {
                 self.chat.lock().await.pid = pid;
                 log::info!("llama chat server spawned (pid={pid:?}), waiting for readiness…");
@@ -185,8 +227,12 @@ pub struct LlamaStatus {
 // Spawn helpers
 // ---------------------------------------------------------------------------
 
-async fn spawn_embed_server(app_handle: &AppHandle) -> Result<Option<u32>, String> {
+async fn spawn_embed_server(
+    app_handle: &AppHandle,
+    instance: Arc<Mutex<ServerInstance>>,
+) -> Result<Option<u32>, String> {
     let model_path = resolve_embed_model_path(app_handle)?;
+    log::debug!("[embed_server] resolved model path: {}", model_path);
 
     let args = vec![
         "--model".to_string(),
@@ -202,18 +248,19 @@ async fn spawn_embed_server(app_handle: &AppHandle) -> Result<Option<u32>, Strin
         "yarn".to_string(),
         "--rope-freq-scale".to_string(),
         "0.75".to_string(),
-        "--log-disable".to_string(),
         "-ngl".to_string(),
         "99".to_string(),
     ];
 
-    spawn_sidecar(app_handle, &args).await
+    spawn_sidecar(app_handle, &args, instance).await
 }
 
 async fn spawn_chat_server(
     app_handle: &AppHandle,
     model_path: &str,
+    instance: Arc<Mutex<ServerInstance>>,
 ) -> Result<Option<u32>, String> {
+    log::debug!("[chat_server] spawning with model path: {}", model_path);
     let args = vec![
         "--model".to_string(),
         model_path.to_string(),
@@ -221,28 +268,114 @@ async fn spawn_chat_server(
         CHAT_PORT.to_string(),
         "--ctx-size".to_string(),
         "4096".to_string(),
-        "--log-disable".to_string(),
         "-ngl".to_string(),
         "99".to_string(),
     ];
 
-    spawn_sidecar(app_handle, &args).await
+    spawn_sidecar(app_handle, &args, instance).await
 }
 
-async fn spawn_sidecar(app_handle: &AppHandle, args: &[String]) -> Result<Option<u32>, String> {
+async fn spawn_sidecar(
+    app_handle: &AppHandle,
+    args: &[String],
+    instance: Arc<Mutex<ServerInstance>>,
+) -> Result<Option<u32>, String> {
     let shell = app_handle.shell();
     let sidecar_cmd = shell
         .sidecar("llama-server")
         .map_err(|e| format!("Failed to create llama-server sidecar command: {e}"))?;
 
+    // On Linux, set LD_LIBRARY_PATH to the directory containing the sidecar so
+    // the companion shared libraries (libllama.so, libggml*.so) can be found.
+    // Tauri resolves sidecars relative to the binary's own directory in production,
+    // or src-tauri/binaries/ in dev mode.
+    #[cfg(target_os = "linux")]
+    let cmd = {
+        let lib_dir = resolve_sidecar_lib_dir(app_handle);
+        log::debug!("[spawn_sidecar] LD_LIBRARY_PATH={:?}", lib_dir);
+        match lib_dir {
+            Some(dir) => sidecar_cmd.args(args).env("LD_LIBRARY_PATH", dir),
+            None => sidecar_cmd.args(args),
+        }
+    };
+
+    #[cfg(not(target_os = "linux"))]
     let cmd = sidecar_cmd.args(args);
 
-    let (_rx, child) = cmd
+    let (rx, child) = cmd
         .spawn()
         .map_err(|e| format!("Failed to spawn llama-server: {e}"))?;
 
     let pid = child.pid();
+
+    // Drain stdout/stderr and watch for process termination.
+    // When the process exits, reset the instance status to Stopped so the next
+    // start_chat_server / start_embed_server call will re-spawn it.
+    tauri::async_runtime::spawn(async move {
+        use tauri_plugin_shell::process::CommandEvent;
+        let mut rx = rx;
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    if let Ok(s) = String::from_utf8(line) {
+                        log::debug!("[llama-server stdout] {}", s.trim_end());
+                    }
+                }
+                CommandEvent::Stderr(line) => {
+                    if let Ok(s) = String::from_utf8(line) {
+                        log::warn!("[llama-server stderr] {}", s.trim_end());
+                    }
+                }
+                CommandEvent::Error(e) => {
+                    log::error!("[llama-server error] {}", e);
+                }
+                CommandEvent::Terminated(status) => {
+                    log::warn!(
+                        "[llama-server] process terminated: code={:?} signal={:?}",
+                        status.code,
+                        status.signal
+                    );
+                    // Reset status so the server can be restarted on the next request.
+                    instance.lock().await.status = ServerStatus::Stopped;
+                    instance.lock().await.pid = None;
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
+
     Ok(Some(pid))
+}
+
+/// On Linux, return the directory that contains the llama-server companion .so files.
+///
+/// In dev mode Tauri resolves sidecars from `{CARGO_MANIFEST_DIR}/binaries/`.
+/// In a production bundle the sidecar sits next to the main binary.
+/// We use `std::env::current_exe()` as the anchor: the sidecar is in the same
+/// directory as the app binary in production, or we fall back to the source tree.
+#[cfg(target_os = "linux")]
+fn resolve_sidecar_lib_dir(app_handle: &AppHandle) -> Option<String> {
+    // Production: sidecar lives in the same dir as the app binary
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let candidate = dir.join("libllama.so");
+            if candidate.exists() {
+                return Some(dir.to_string_lossy().into_owned());
+            }
+        }
+    }
+
+    // Dev mode: sidecar lives in src-tauri/binaries/ inside the source tree.
+    // Tauri stores the resource dir near the source tree during dev.
+    let _ = app_handle; // unused in this branch but keep signature consistent
+    let dev_binaries = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("binaries");
+    if dev_binaries.join("libllama.so").exists() {
+        return Some(dev_binaries.to_string_lossy().into_owned());
+    }
+
+    log::warn!("[spawn_sidecar] could not locate libllama.so — llama-server may fail to start");
+    None
 }
 
 /// Resolve the path to the bundled nomic-embed-text model.

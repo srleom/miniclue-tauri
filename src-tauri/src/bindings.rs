@@ -9,6 +9,7 @@ use specta_typescript::Typescript;
 use tauri_specta::{collect_commands, Builder};
 
 use crate::commands;
+use crate::services::model_manager::DownloadProgress;
 
 /// Export TypeScript bindings for all Tauri commands and types
 pub fn export_bindings() {
@@ -57,6 +58,9 @@ pub fn export_bindings() {
             commands::local_model::set_local_chat_enabled,
             commands::local_model::get_llama_server_status,
         ]);
+
+    // Register extra types that are emitted as Tauri events (not command return values)
+    let builder = builder.typ::<DownloadProgress>();
 
     // Only export in debug builds (during development)
     #[cfg(debug_assertions)]

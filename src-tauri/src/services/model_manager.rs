@@ -30,12 +30,18 @@ pub struct ModelEntry {
     pub description: String,
     /// File size in bytes (as f64 for TypeScript compatibility)
     #[specta(type = f64)]
+    #[serde(alias = "size_bytes")]
     pub size_bytes: u64,
     pub sha256: Option<String>,
+    #[serde(alias = "hf_repo")]
     pub hf_repo: String,
+    #[serde(alias = "hf_filename")]
     pub hf_filename: String,
+    #[serde(alias = "min_ram_gb")]
     pub min_ram_gb: u32,
+    #[serde(alias = "is_default")]
     pub is_default: bool,
+    #[serde(alias = "superseded_by")]
     pub superseded_by: Option<String>,
     pub tags: Vec<String>,
 }
@@ -43,7 +49,9 @@ pub struct ModelEntry {
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCatalog {
+    #[serde(alias = "schema_version")]
     pub schema_version: u32,
+    #[serde(alias = "updated_at")]
     pub updated_at: String,
     pub models: Vec<ModelEntry>,
 }
@@ -70,13 +78,15 @@ pub struct LocalModelStatus {
 // Download progress event (sent via Tauri event emitter)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadProgress {
     pub model_id: String,
     /// Bytes downloaded so far
+    #[specta(type = f64)]
     pub downloaded_bytes: u64,
     /// Total file size (0 if unknown)
+    #[specta(type = f64)]
     pub total_bytes: u64,
 }
 
@@ -294,6 +304,17 @@ fn load_bundled_catalog() -> Result<ModelCatalog, String> {
         .map_err(|e| format!("Failed to parse bundled catalog: {e}"))
 }
 
+/// Return the friendly display name for a local model ID using the bundled catalog.
+/// Falls back to `None` when the ID is not found.
+pub fn get_bundled_model_name(model_id: &str) -> Option<String> {
+    load_bundled_catalog()
+        .ok()?
+        .models
+        .into_iter()
+        .find(|m| m.id == model_id)
+        .map(|m| m.name)
+}
+
 async fn fetch_remote_catalog() -> Result<ModelCatalog, String> {
     let client = Client::builder()
         .timeout(Duration::from_secs(30))
@@ -357,13 +378,27 @@ fn find_gguf_in_dir(dir: &Path) -> Option<PathBuf> {
         })
 }
 
-/// Recommend a model ID based on available RAM (in bytes).
+/// Recommend a model ID based on available RAM and GPU presence.
+///
+/// Priority is *response speed* first, quality second. The 0.6B model runs
+/// at ~40 tok/s on a modern CPU; the 1.7B at ~20 tok/s; the 4B at ~8 tok/s.
+/// Only push to a larger model when the machine can sustain a usable speed.
+///
+/// | RAM       | CPU-only        | GPU present     |
+/// |-----------|-----------------|-----------------|
+/// | < 4 GB    | qwen3-0b6-q8    | qwen3-0b6-q8    |
+/// | 4–7 GB    | qwen3-0b6-q8    | qwen3-1b7-q8    |
+/// | 8–15 GB   | qwen3-1b7-q8    | qwen3-4b-q4     |
+/// | ≥ 16 GB   | qwen3-1b7-q8    | qwen3-4b-q4     |
 pub fn recommend_model_id(total_ram_bytes: u64, has_gpu: bool) -> &'static str {
     let ram_gb = total_ram_bytes / (1024 * 1024 * 1024);
-    match ram_gb {
-        0..=3 => "qwen3-1b7-q4",
-        4..=7 if !has_gpu => "qwen3-1b7-q4",
-        4..=15 => "qwen3-4b-q4",
-        _ => "qwen3-8b-q4",
+    match (ram_gb, has_gpu) {
+        (0..=3, _) => "qwen3-0b6-q8",
+        (4..=7, false) => "qwen3-0b6-q8",
+        (4..=7, true) => "qwen3-1b7-q8",
+        (8..=15, false) => "qwen3-1b7-q8",
+        (8..=15, true) => "qwen3-4b-q4",
+        (_, false) => "qwen3-1b7-q8",
+        (_, true) => "qwen3-4b-q4",
     }
 }

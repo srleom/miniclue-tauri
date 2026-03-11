@@ -18,6 +18,7 @@ import {
   getLocalModelStatus,
   getModelCatalog,
   getRecommendedModelId,
+  listModels,
   setLocalChatEnabled,
 } from '@/lib/tauri';
 import type {
@@ -88,8 +89,10 @@ export function LocalAITab() {
   const [downloading, setDownloading] = React.useState<
     Record<string, { downloaded: number; total: number }>
   >({});
-  const [localEnabled, setLocalEnabled] = React.useState(false);
-  const [activeModelId, setActiveModelId] = React.useState<string | null>(null);
+  // Set of model IDs that are currently enabled in the selector
+  const [enabledModelIds, setEnabledModelIds] = React.useState<Set<string>>(
+    new Set()
+  );
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
@@ -97,14 +100,28 @@ export function LocalAITab() {
   React.useEffect(() => {
     async function load() {
       try {
-        const [cat, recId, srvStatus] = await Promise.all([
+        const [cat, recId, srvStatus, modelsData] = await Promise.all([
           getModelCatalog(),
           getRecommendedModelId(),
           getLlamaServerStatus(),
+          listModels(),
         ]);
         setCatalog(cat);
         setRecommendedId(recId);
         setServerStatus(srvStatus);
+
+        // Derive the set of enabled model IDs from what list_models returns
+        // (the "local" provider contains exactly the enabled ones)
+        const localProvider = modelsData.providers.find(
+          (p) => p.provider === 'local'
+        );
+        const enabledIds = new Set(
+          (localProvider?.models ?? []).map((m) =>
+            // strip "local:" prefix to get the raw model ID
+            m.id.startsWith('local:') ? m.id.slice('local:'.length) : m.id
+          )
+        );
+        setEnabledModelIds(enabledIds);
 
         // Load per-model statuses
         const statusMap: Record<string, LocalModelStatus> = {};
@@ -115,15 +132,6 @@ export function LocalAITab() {
           })
         );
         setStatuses(statusMap);
-
-        // Determine currently active model from server status + downloaded models
-        const downloaded = cat.models.find(
-          (m) => statusMap[m.id]?.isDownloaded
-        );
-        if (downloaded) {
-          setActiveModelId(downloaded.id);
-          setLocalEnabled(srvStatus.chat.toLowerCase() !== 'stopped');
-        }
       } catch (e) {
         setError(String(e));
       }
@@ -158,7 +166,6 @@ export function LocalAITab() {
       // Refresh status
       const s = await getLocalModelStatus(modelId);
       setStatuses((prev) => ({ ...prev, [modelId]: s }));
-      setActiveModelId(modelId);
       setDownloading((prev) => {
         const next = { ...prev };
         delete next[modelId];
@@ -178,10 +185,12 @@ export function LocalAITab() {
       await deleteLocalModel(modelId);
       const s = await getLocalModelStatus(modelId);
       setStatuses((prev) => ({ ...prev, [modelId]: s }));
-      if (activeModelId === modelId) {
-        setActiveModelId(null);
-        setLocalEnabled(false);
-      }
+      // Remove from enabled set if it was there
+      setEnabledModelIds((prev) => {
+        const next = new Set(prev);
+        next.delete(modelId);
+        return next;
+      });
     } catch (e) {
       setError(`Delete failed: ${String(e)}`);
     } finally {
@@ -194,8 +203,15 @@ export function LocalAITab() {
     setError(null);
     try {
       await setLocalChatEnabled(enabled, modelId);
-      setLocalEnabled(enabled);
-      setActiveModelId(modelId);
+      setEnabledModelIds((prev) => {
+        const next = new Set(prev);
+        if (enabled) {
+          next.add(modelId);
+        } else {
+          next.delete(modelId);
+        }
+        return next;
+      });
       const srvStatus = await getLlamaServerStatus();
       setServerStatus(srvStatus);
     } catch (e) {
@@ -258,7 +274,7 @@ export function LocalAITab() {
           const isDownloaded = st?.isDownloaded ?? false;
           const dlProgress = downloading[model.id];
           const isRec = model.id === recommendedId;
-          const isActive = model.id === activeModelId;
+          const isEnabled = enabledModelIds.has(model.id);
 
           return (
             <div key={model.id} className="rounded-lg border p-4">
@@ -310,13 +326,13 @@ export function LocalAITab() {
                 <div className="flex shrink-0 items-center gap-2">
                   {isDownloaded ? (
                     <>
-                      {/* Enable/disable toggle */}
+                      {/* Enable/disable toggle — independent per model */}
                       <div className="flex items-center gap-1.5">
-                        {isActive && serverStatus && (
+                        {isEnabled && serverStatus && (
                           <ServerStatusBadge status={serverStatus.chat} />
                         )}
                         <Switch
-                          checked={isActive && localEnabled}
+                          checked={isEnabled}
                           disabled={busy}
                           onCheckedChange={(v) =>
                             handleToggleEnabled(model.id, v)

@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Thread } from '@/components/assistant-ui/thread';
@@ -5,6 +6,7 @@ import { ChatHeader } from '@/components/document/chat-header';
 import { Badge } from '@/components/ui/badge';
 import { ChatRuntimeProvider } from '@/lib/chat/chat-runtime-provider';
 import { useChats, useCreateChat } from '@/lib/chat/use-chat-queries';
+import { listModels } from '@/lib/tauri';
 
 interface ChatPanelProps {
   documentId: string;
@@ -53,9 +55,35 @@ const isProcessingStatus = (status: string): status is ProcessingStatus =>
  * - Disabled during document processing
  */
 export function ChatPanel({ documentId, status }: ChatPanelProps) {
-  const [selectedModel, setSelectedModel] = useState<string>(
-    'gemini-3-flash-preview'
-  );
+  const { data: modelsData } = useQuery({
+    queryKey: ['models'],
+    queryFn: listModels,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Derive default model: prefer local AI if available, otherwise first enabled model.
+  // Returns empty string when no models are configured — the ModelSelector will show
+  // "No models available" and the user can open settings to configure one.
+  const defaultModel = (() => {
+    if (!modelsData) return null; // still loading
+    const allModels = modelsData.providers.flatMap((p) =>
+      p.models
+        .filter((m) => m.enabled)
+        .map((m) => ({ provider: p.provider, id: m.id }))
+    );
+    const local = allModels.find((m) => m.provider === 'local');
+    if (local) return local.id;
+    return allModels[0]?.id ?? ''; // empty string = no models, but don't block
+  })();
+
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
+
+  // Once we have a default model (including empty string), set it (only on first load)
+  useEffect(() => {
+    if (defaultModel !== null && selectedModel === null) {
+      setSelectedModel(defaultModel);
+    }
+  }, [defaultModel, selectedModel]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const processingState = isProcessingStatus(status)
     ? PROCESSING_STATUS_META[status]
@@ -116,13 +144,16 @@ export function ChatPanel({ documentId, status }: ChatPanelProps) {
     initializeChat();
   }, [chats, isLoadingChats, currentChatId]);
 
-  if (isLoadingChats || !currentChatId) {
+  if (isLoadingChats || !currentChatId || selectedModel === null) {
     return (
       <div className="flex h-full items-center justify-center bg-gray-50 dark:bg-gray-900">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
+
+  // selectedModel is guaranteed non-null past this point
+  const currentModel: string = selectedModel;
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -154,10 +185,10 @@ export function ChatPanel({ documentId, status }: ChatPanelProps) {
             key={currentChatId}
             documentId={documentId}
             chatId={currentChatId}
-            model={selectedModel}
+            model={currentModel}
           >
             <Thread
-              selectedModel={selectedModel}
+              selectedModel={currentModel}
               onModelChange={setSelectedModel}
             />
           </ChatRuntimeProvider>

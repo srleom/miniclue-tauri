@@ -111,12 +111,19 @@ async fn detect_gpu() -> (GpuClass, String) {
     const VENDOR_INTEL: u32 = 0x8086;
     const VENDOR_APPLE: u32 = 0x106B;
 
+    // On Linux, restrict to Vulkan only to avoid spurious EGL/OpenGL stderr noise
+    // (wgpu's GL backend calls eglSwapInterval which produces harmless but noisy errors).
+    #[cfg(target_os = "linux")]
+    let backends = Backends::VULKAN;
+    #[cfg(not(target_os = "linux"))]
+    let backends = Backends::all();
+
     let instance = Instance::new(InstanceDescriptor {
-        backends: Backends::all(),
+        backends,
         ..Default::default()
     });
 
-    let adapters: Vec<_> = instance.enumerate_adapters(Backends::all());
+    let adapters: Vec<_> = instance.enumerate_adapters(backends);
 
     // Score adapters: prefer discrete over integrated, hardware over software.
     fn score(info: &wgpu::AdapterInfo) -> i32 {

@@ -6,7 +6,7 @@ import {
 } from '@assistant-ui/react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { getChat } from '@/lib/tauri';
 import type { Chat } from '@/lib/types';
 import { chatKeys, useChatMessages, useSendMessage } from './use-chat-queries';
@@ -38,13 +38,22 @@ export function ChatRuntimeProvider({
     ThreadMessageLike[]
   >([]);
 
+  // Shared cancellation flag. Set to true in onCancel; checked in the stream
+  // event handler to silently drop further chunks/done events.
+  const cancelledRef = useRef(false);
+
   const queryClient = useQueryClient();
 
   // Fetch messages from backend (already converted to ThreadMessageLike)
   const { data: backendMessages = [] } = useChatMessages(documentId, chatId);
 
   // Mutation for sending messages with streaming
-  const sendMessageMutation = useSendMessage(documentId, chatId, model);
+  const sendMessageMutation = useSendMessage(
+    documentId,
+    chatId,
+    model,
+    cancelledRef
+  );
 
   // Combine backend messages with optimistic updates
   const messages = useMemo(() => {
@@ -145,6 +154,20 @@ export function ChatRuntimeProvider({
 
       const input = message.content[0].text;
 
+      // Reset cancellation flag for the new request.
+      // If a prior stream was cancelled, also flush any stale optimistic messages
+      // so the real persisted history (including any partial saved by the backend)
+      // is fetched fresh before we push new optimistic entries.
+      if (cancelledRef.current) {
+        cancelledRef.current = false;
+        setOptimisticMessages([]);
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.messages(documentId, chatId),
+        });
+      } else {
+        cancelledRef.current = false;
+      }
+
       // Create optimistic user message
       const userMessage: ThreadMessageLike = {
         id: `temp-user-${Date.now()}`,
@@ -224,6 +247,25 @@ export function ChatRuntimeProvider({
   );
 
   /**
+   * Handle stop button: immediately stop the spinner but keep the partial
+   * streamed content visible. The cancelledRef flag tells the in-flight event
+   * handler to drop further chunks, but the last-rendered optimistic messages
+   * (user prompt + partial assistant reply) remain in place.
+   *
+   * The Rust backend will still finish and save whatever it generated; once it
+   * emits `Done` the regular `onDone` path would invalidate the query and
+   * replace optimistic messages with the real persisted ones — but since
+   * `cancelledRef` is set, that callback is skipped. The optimistic messages
+   * therefore persist until the user sends the next message (which resets them).
+   */
+  const onCancel = useCallback(async () => {
+    cancelledRef.current = true;
+    setIsRunning(false);
+    // Intentionally do NOT clear optimisticMessages — keep the partial text visible.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
    * Convert message to ThreadMessageLike
    * Since our messages are already in ThreadMessageLike format, this is a passthrough
    */
@@ -237,6 +279,7 @@ export function ChatRuntimeProvider({
     messages,
     isRunning,
     onNew,
+    onCancel,
     convertMessage,
   });
 

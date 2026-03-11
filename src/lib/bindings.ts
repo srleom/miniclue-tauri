@@ -232,6 +232,9 @@ async getHardwareProfile() : Promise<Result<HardwareProfile, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Return the model catalog (cached remote → bundled fallback).
+ */
 async getModelCatalog() : Promise<Result<ModelCatalog, ApiError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_model_catalog") };
@@ -240,6 +243,9 @@ async getModelCatalog() : Promise<Result<ModelCatalog, ApiError>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Return the recommended model ID for this machine based on hardware.
+ */
 async getRecommendedModelId() : Promise<Result<string, ApiError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_recommended_model_id") };
@@ -248,6 +254,9 @@ async getRecommendedModelId() : Promise<Result<string, ApiError>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Return download/presence status for a specific model ID.
+ */
 async getLocalModelStatus(modelId: string) : Promise<Result<LocalModelStatus, ApiError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_local_model_status", { modelId }) };
@@ -256,6 +265,12 @@ async getLocalModelStatus(modelId: string) : Promise<Result<LocalModelStatus, Ap
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Start downloading a model in the background with progress events.
+ * 
+ * Emits `"model-download-progress"` events during download.
+ * Returns the local file path when complete.
+ */
 async downloadLocalModel(modelId: string) : Promise<Result<string, ApiError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("download_local_model", { modelId }) };
@@ -264,6 +279,9 @@ async downloadLocalModel(modelId: string) : Promise<Result<string, ApiError>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Delete a downloaded model from disk.
+ */
 async deleteLocalModel(modelId: string) : Promise<Result<null, ApiError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("delete_local_model", { modelId }) };
@@ -272,6 +290,18 @@ async deleteLocalModel(modelId: string) : Promise<Result<null, ApiError>> {
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Enable or disable a specific local model in the chat model selector.
+ * 
+ * When `enabled = true` the model is added to `local_chat_enabled_models` so it
+ * appears in the model selector dropdown.  The llama-server is started (or
+ * restarted) with this model so the user can immediately begin chatting.
+ * 
+ * When `enabled = false` the model is removed from the enabled set.  If it was
+ * the currently loaded server model, the server is NOT stopped — the user can
+ * still finish an in-flight conversation; the model will simply no longer appear
+ * in the selector after the next page refresh.
+ */
 async setLocalChatEnabled(enabled: boolean, modelId: string | null) : Promise<Result<null, ApiError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_local_chat_enabled", { enabled, modelId }) };
@@ -280,6 +310,9 @@ async setLocalChatEnabled(enabled: boolean, modelId: string | null) : Promise<Re
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Return the current status of both llama-server instances.
+ */
 async getLlamaServerStatus() : Promise<Result<LlamaStatus, ApiError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("get_llama_server_status") };
@@ -322,6 +355,15 @@ export type CustomProviderResponse = { id: string; name: string; base_url: strin
 export type DocumentResponse = { id: string; folder_id: string; title: string; file_path: string | null; status: string; error_details: string | null; total_pages: number; embeddings_complete: boolean; created_at: string; updated_at: string; accessed_at: string; completed_at: string | null }
 export type DocumentStatus = { status: string; error_details: string | null }
 export type DocumentUpdate = { title: string | null; folder_id: string | null; accessed_at: string | null }
+export type DownloadProgress = { modelId: string; 
+/**
+ * Bytes downloaded so far
+ */
+downloadedBytes: number; 
+/**
+ * Total file size (0 if unknown)
+ */
+totalBytes: number }
 export type FolderCreate = { title: string; description: string | null; is_default: boolean | null }
 export type FolderResponse = { id: string; title: string; description: string; is_default: boolean; created_at: string; updated_at: string }
 export type FolderUpdate = { title: string | null; description: string | null }
@@ -402,7 +444,31 @@ gpuName: string;
  */
 availableDiskBytes: number }
 export type ImportDocumentRequest = { file_paths: string[]; folder_id: string | null }
+export type LlamaStatus = { embed: string; chat: string }
+export type LocalModelStatus = { 
+/**
+ * Model ID from catalog
+ */
+modelId: string; 
+/**
+ * Whether the model file is present on disk
+ */
+isDownloaded: boolean; 
+/**
+ * Absolute path to the model file (if downloaded)
+ */
+path: string | null; 
+/**
+ * File size on disk (0 if not downloaded)
+ */
+sizeOnDisk: number }
 export type MessageResponse = { id: string; chat_id: string; role: string; parts: string; metadata: string; created_at: string }
+export type ModelCatalog = { schemaVersion: number; updatedAt: string; models: ModelEntry[] }
+export type ModelEntry = { id: string; name: string; description: string; 
+/**
+ * File size in bytes (as f64 for TypeScript compatibility)
+ */
+sizeBytes: number; sha256: string | null; hfRepo: string; hfFilename: string; minRamGb: number; isDefault: boolean; supersededBy: string | null; tags: string[] }
 export type ModelToggle = { id: string; name: string; enabled: boolean }
 export type ModelsResponse = { providers: ProviderModels[] }
 export type ProviderModels = { provider: string; models: ModelToggle[] }
@@ -412,11 +478,6 @@ export type StreamChatRequest = { document_id: string; chat_id: string; message:
 export type TAURI_CHANNEL<TSend> = null
 export type UserFolder = { id: string; title: string; description: string; is_default: boolean; updated_at: string; documents?: UserFolderDocument[] | null }
 export type UserFolderDocument = { id: string; title: string; status: string; folder_id: string }
-export type ModelEntry = { id: string; name: string; description: string; sizeBytes: number; sha256: string | null; hfRepo: string; hfFilename: string; minRamGb: number; isDefault: boolean; supersededBy: string | null; tags: string[] }
-export type ModelCatalog = { schemaVersion: number; updatedAt: string; models: ModelEntry[] }
-export type LocalModelStatus = { modelId: string; isDownloaded: boolean; path: string | null; sizeOnDisk: number }
-export type LlamaStatus = { embed: string; chat: string }
-export type DownloadProgress = { modelId: string; downloadedBytes: number; totalBytes: number }
 
 /** tauri-specta globals **/
 

@@ -12,7 +12,7 @@ use zip::ZipArchive;
 const PDFIUM_VERSION: &str = "7543";
 
 // llama.cpp server pinned build
-const LLAMA_BUILD: &str = "b4641";
+const LLAMA_BUILD: &str = "b8263";
 
 // Nomic embed model
 const NOMIC_EMBED_MODEL: &str = "nomic-embed-text-v1.5.Q5_K_M.gguf";
@@ -31,6 +31,9 @@ struct LlamaTarget {
     asset_filename: &'static str,
     /// Name of the `llama-server` (or `llama-server.exe`) inside the archive
     binary_name: &'static str,
+    /// Shared library extensions to also extract alongside the binary (e.g. ".so", ".dylib").
+    /// On Linux the Ubuntu release ships libllama.so / libggml*.so next to the binary.
+    lib_extensions: &'static [&'static str],
 }
 
 fn main() {
@@ -218,11 +221,41 @@ fn ensure_llama_server_binary() -> Result<(), String> {
     let sidecar_path = binaries_dir.join(&sidecar_name);
 
     if sidecar_path.exists() {
-        println!(
-            "cargo:warning=Using cached llama-server at {}",
-            sidecar_path.display()
-        );
-        return Ok(());
+        // For targets that ship companion shared libraries, also verify at least
+        // one lib is present. If the binary exists but libs are missing (e.g. from
+        // a partial prior extraction), fall through to re-download.
+        let libs_ok = if llama_target.lib_extensions.is_empty() {
+            true
+        } else {
+            // Check that at least one companion lib exists in binaries/
+            fs::read_dir(&binaries_dir)
+                .map(|mut entries| {
+                    entries.any(|e| {
+                        e.ok()
+                            .and_then(|e| e.file_name().into_string().ok())
+                            .map(|name| {
+                                llama_target
+                                    .lib_extensions
+                                    .iter()
+                                    .any(|ext| name.contains(ext))
+                            })
+                            .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false)
+        };
+
+        if libs_ok {
+            println!(
+                "cargo:warning=Using cached llama-server at {}",
+                sidecar_path.display()
+            );
+            // Even on cache hit we must ensure the .so/.dylib files are present
+            // next to the sidecar binary in target/{profile}/ for dev mode.
+            copy_libs_to_target_dir(&binaries_dir, llama_target.lib_extensions)?;
+            return Ok(());
+        }
+        println!("cargo:warning=llama-server binary exists but companion libs are missing — re-extracting");
     }
 
     fs::create_dir_all(&binaries_dir).map_err(|e| format!("Failed to create binaries dir: {e}"))?;
@@ -285,6 +318,32 @@ fn ensure_llama_server_binary() -> Result<(), String> {
             .map_err(|e| format!("Failed to set executable permissions: {e}"))?;
     }
 
+    // Copy companion shared libraries (.so / .dylib) into binaries/ so the
+    // dynamic linker can find them next to the sidecar at runtime.
+    if !llama_target.lib_extensions.is_empty() {
+        let lib_dir = found
+            .parent()
+            .ok_or("llama-server binary has no parent directory")?;
+        let entries = fs::read_dir(lib_dir)
+            .map_err(|e| format!("Failed to read extract dir {}: {e}", lib_dir.display()))?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let name = path.file_name().and_then(OsStr::to_str).unwrap_or_default();
+                let is_lib = llama_target
+                    .lib_extensions
+                    .iter()
+                    .any(|ext| name.contains(ext));
+                if is_lib {
+                    let dest = binaries_dir.join(name);
+                    fs::copy(&path, &dest)
+                        .map_err(|e| format!("Failed to copy lib {} to binaries/: {e}", name))?;
+                    println!("cargo:warning=Copied companion lib {} to binaries/", name);
+                }
+            }
+        }
+    }
+
     println!(
         "cargo:warning=Downloaded llama-server {} for {}/{} to {}",
         LLAMA_BUILD,
@@ -293,30 +352,115 @@ fn ensure_llama_server_binary() -> Result<(), String> {
         sidecar_path.display()
     );
 
+    // Copy .so/.dylib/.dll files into target/{profile}/ so that when Tauri dev
+    // mode resolves the sidecar binary to target/debug/llama-server, the
+    // companion shared libraries are in the same directory.  This is needed
+    // because ggml_backend_load_all() uses dlopen() with a path relative to
+    // the executable, not LD_LIBRARY_PATH.
+    copy_libs_to_target_dir(&binaries_dir, llama_target.lib_extensions)?;
+
     Ok(())
+}
+
+/// Copy companion shared libraries (`.so`, `.dylib`, `.dll`) from `source_dir`
+/// into the Cargo target output directory (e.g. `target/debug/`) so that the
+/// `llama-server` sidecar binary can find them via relative `dlopen()` calls
+/// (used by `ggml_backend_load_all()`).
+///
+/// The target directory is derived by walking up from `OUT_DIR` to find the
+/// `target/{profile}/` ancestor.
+fn copy_libs_to_target_dir(source_dir: &Path, lib_extensions: &[&str]) -> Result<(), String> {
+    if lib_extensions.is_empty() {
+        return Ok(());
+    }
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").map_err(|e| format!("Missing OUT_DIR: {e}"))?);
+
+    // OUT_DIR is typically .../target/{profile}/build/{crate}-{hash}/out
+    // Walk up until we find a directory whose name is "debug" or "release"
+    // and whose parent is named "target".
+    let target_dir = find_target_profile_dir(&out_dir).ok_or_else(|| {
+        format!(
+            "Could not locate target/{{profile}}/ directory from OUT_DIR={}",
+            out_dir.display()
+        )
+    })?;
+
+    let entries = fs::read_dir(source_dir)
+        .map_err(|e| format!("Failed to read binaries dir {}: {e}", source_dir.display()))?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let name = match path.file_name().and_then(OsStr::to_str) {
+            Some(n) => n.to_owned(),
+            None => continue,
+        };
+        let is_lib = lib_extensions.iter().any(|ext| name.contains(ext));
+        if !is_lib {
+            continue;
+        }
+        let dest = target_dir.join(&name);
+        if dest.exists() {
+            // Skip if already up-to-date (same size is a cheap heuristic).
+            let src_len = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let dst_len = fs::metadata(&dest).map(|m| m.len()).unwrap_or(1);
+            if src_len == dst_len {
+                continue;
+            }
+        }
+        fs::copy(&path, &dest)
+            .map_err(|e| format!("Failed to copy {name} to {}: {e}", target_dir.display()))?;
+        println!("cargo:warning=Copied {} to {}", name, target_dir.display());
+    }
+
+    Ok(())
+}
+
+/// Walk up from `start` to find a directory whose name is "debug" or "release"
+/// and whose parent's name is "target".
+fn find_target_profile_dir(start: &Path) -> Option<PathBuf> {
+    let mut current = start.to_path_buf();
+    loop {
+        let name = current.file_name()?.to_str()?;
+        if name == "debug" || name == "release" {
+            if let Some(parent) = current.parent() {
+                if parent.file_name().and_then(|n| n.to_str()) == Some("target") {
+                    return Some(current);
+                }
+            }
+        }
+        current = current.parent()?.to_path_buf();
+    }
 }
 
 fn resolve_llama_target(target_os: &str, target_arch: &str) -> Option<LlamaTarget> {
     match (target_os, target_arch) {
         ("macos", "aarch64") => Some(LlamaTarget {
             triple: "aarch64-apple-darwin",
-            asset_filename: "llama-b4641-bin-macos-arm64.zip",
+            asset_filename: "llama-b8263-bin-macos-arm64.tar.gz",
             binary_name: "llama-server",
+            lib_extensions: &[".dylib"],
         }),
         ("macos", "x86_64") => Some(LlamaTarget {
             triple: "x86_64-apple-darwin",
-            asset_filename: "llama-b4641-bin-macos-x64.zip",
+            asset_filename: "llama-b8263-bin-macos-x64.tar.gz",
             binary_name: "llama-server",
+            lib_extensions: &[".dylib"],
         }),
         ("linux", "x86_64") => Some(LlamaTarget {
             triple: "x86_64-unknown-linux-gnu",
-            asset_filename: "llama-b4641-bin-ubuntu-x64.zip",
+            asset_filename: "llama-b8263-bin-ubuntu-x64.tar.gz",
             binary_name: "llama-server",
+            lib_extensions: &[".so"],
         }),
         ("windows", "x86_64") => Some(LlamaTarget {
             triple: "x86_64-pc-windows-msvc",
-            asset_filename: "llama-b4641-bin-win-cpu-x64.zip",
+            asset_filename: "llama-b8263-bin-win-cpu-x64.zip",
             binary_name: "llama-server.exe",
+            lib_extensions: &[".dll"],
         }),
         _ => None,
     }

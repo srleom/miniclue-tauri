@@ -7,6 +7,7 @@ use crate::models::user::{
     ApiKeyResponse, CustomProviderRequest, CustomProviderResponse, ModelToggle, ModelsResponse,
     ProviderModels, RecentDocument, RecentDocumentsResponse, UserFolder,
 };
+use crate::services::model_manager::get_bundled_model_name;
 use crate::services::validators::ApiKeyValidator;
 use crate::state::AppState;
 
@@ -258,11 +259,52 @@ pub async fn list_models(state: State<'_, AppState>) -> Result<ModelsResponse, A
         providers.push(ProviderModels {
             provider: format!("custom:{}", cp.id),
             models: vec![ModelToggle {
-                id: cp.model_id.clone(),
-                name: cp.model_id.clone(),
+                id: format!("custom:{}", cp.id),
+                name: cp.name.clone(),
                 enabled: true,
             }],
         });
+    }
+
+    // Append local AI models — one entry per model in `local_chat_enabled_models`.
+    //
+    // Backward-compat: if `local_chat_enabled_models` is empty but the legacy
+    // `local_chat_enabled` flag is true, fall back to the single-model behaviour so
+    // that users who never toggled the new UI still see their model.
+    let enabled_models: Vec<String> = {
+        let em = &config.settings.local_chat_enabled_models;
+        if em.is_empty() && config.settings.local_chat_enabled {
+            // Legacy path
+            config
+                .settings
+                .local_chat_model_id
+                .iter()
+                .cloned()
+                .collect()
+        } else {
+            em.clone()
+        }
+    };
+
+    if !enabled_models.is_empty() {
+        let toggles: Vec<ModelToggle> = enabled_models
+            .iter()
+            .map(|model_id| {
+                let name = get_bundled_model_name(model_id).unwrap_or_else(|| model_id.clone());
+                ModelToggle {
+                    id: format!("local:{}", model_id),
+                    name,
+                    enabled: true,
+                }
+            })
+            .collect();
+
+        if !toggles.is_empty() {
+            providers.push(ProviderModels {
+                provider: "local".to_string(),
+                models: toggles,
+            });
+        }
     }
 
     Ok(ModelsResponse { providers })

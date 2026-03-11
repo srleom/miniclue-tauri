@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type React from 'react';
 import {
   createChat,
   deleteChat,
@@ -156,12 +157,19 @@ export function useDeleteChat(documentId: string) {
 }
 
 /**
- * Hook to send a message with streaming
+ * Hook to send a message with streaming.
+ *
+ * `cancelledRef` is a mutable ref shared with the caller. When set to `true`
+ * the event handler stops forwarding chunks and ignores the done/title events,
+ * effectively cancelling the stream from the UI perspective. The underlying
+ * Rust command continues until its HTTP stream ends, but its channel events
+ * are silently dropped.
  */
 export function useSendMessage(
   documentId: string,
   chatId: string,
-  model: string
+  model: string,
+  cancelledRef: React.MutableRefObject<boolean>
 ) {
   return useMutation({
     mutationFn: async ({
@@ -182,6 +190,9 @@ export function useSendMessage(
       let accumulatedContent = '';
 
       await streamChat(documentId, chatId, message, model, (event) => {
+        // Stop processing events if the user cancelled
+        if (cancelledRef.current) return;
+
         if (event.event === 'chunk') {
           accumulatedContent += event.data.content;
           onChunk(accumulatedContent);
