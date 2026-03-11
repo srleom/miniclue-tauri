@@ -252,12 +252,6 @@ pub async fn import_documents(
 
         // Spawn background processing task with concurrency limit
         let db = state.db.clone();
-        let config_guard = state.config.read().await;
-        let api_key = config_guard
-            .get_api_key("gemini")
-            .ok_or_else(|| ApiError::api_key_error("Gemini API key not configured"))?
-            .clone();
-        drop(config_guard); // Release lock before spawning task
         let app_handle_clone = app_handle.clone();
         let semaphore = state.processing_semaphore.clone();
         let app_data_dir_clone = state.app_data_dir.clone();
@@ -274,7 +268,6 @@ pub async fn import_documents(
                 &db,
                 &document_id,
                 &dest_path_str,
-                &api_key,
                 &app_data_dir_clone,
                 app_handle_clone.clone(),
             )

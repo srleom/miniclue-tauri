@@ -1,4 +1,4 @@
-import { Cpu, Key } from 'lucide-react';
+import { Cpu, Sparkles } from 'lucide-react';
 import * as React from 'react';
 import {
   Dialog,
@@ -18,32 +18,33 @@ import {
 } from '@/components/ui/sidebar';
 import type { Provider } from '@/lib/types';
 import { useModels } from '../../hooks/use-queries';
-import { APIKeyHeader } from './api-key-header';
-import { ModelsHeader } from './models-header';
+import { LocalAITab } from './local-ai-tab';
 import { ModelsList } from './models-list';
 import { providers } from './provider-constants';
-// Import existing components
-import { ProviderListWrapper } from './provider-list-wrapper';
 
 const navItems = [
-  { name: 'API Keys', icon: Key, value: 'api-keys' },
-  { name: 'Models', icon: Cpu, value: 'models' },
+  { name: 'Local AI', icon: Sparkles, value: 'local-ai' },
+  { name: 'Providers', icon: Cpu, value: 'providers' },
 ] as const;
+
+type NavValue = (typeof navItems)[number]['value'];
 
 interface SettingsDialogProps {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   children?: React.ReactNode;
+  initialTab?: NavValue;
 }
 
 export function SettingsDialog({
   open,
   onOpenChange,
   children,
+  initialTab,
 }: SettingsDialogProps) {
-  const [activeSection, setActiveSection] = React.useState<
-    'api-keys' | 'models'
-  >('api-keys');
+  const [activeSection, setActiveSection] = React.useState<NavValue>(
+    initialTab ?? 'local-ai'
+  );
 
   const { data: modelsData, error: modelsError } = useModels();
 
@@ -154,25 +155,18 @@ export function SettingsDialog({
 
           <main className="flex h-[600px] flex-1 flex-col overflow-hidden py-8 px-6">
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0">
-              {activeSection === 'api-keys' && (
-                <div>
-                  <APIKeyHeader />
-                  <div className="mt-8">
-                    <h2 className="text-muted-foreground mb-4 text-sm font-medium tracking-tighter uppercase">
-                      Provider Keys
-                    </h2>
-                    <ProviderListWrapper initialStatus={apiKeysStatus} />
-                  </div>
-                </div>
-              )}
+              {activeSection === 'local-ai' && <LocalAITab />}
 
-              {activeSection === 'models' && (
+              {activeSection === 'providers' && (
                 <div>
-                  <ModelsHeader />
+                  <div>
+                    <h1 className="text-2xl font-semibold">Providers</h1>
+                    <p className="text-muted-foreground mt-2">
+                      Manage API keys and enable the models you want available
+                      in chat.
+                    </p>
+                  </div>
                   <div className="mt-8">
-                    <h2 className="text-muted-foreground mb-4 text-sm font-medium tracking-tighter uppercase">
-                      Available Models
-                    </h2>
                     <ModelsList providers={allProvidersData} />
                   </div>
                 </div>

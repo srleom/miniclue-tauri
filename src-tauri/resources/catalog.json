@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-03-11",
+  "models": [
+    {
+      "id": "qwen3-0b6-q8",
+      "name": "Qwen3 0.6B",
+      "description": "Fastest model. Snappy responses on any computer, great for quick questions.",
+      "size_bytes": 704643072,
+      "sha256": null,
+      "hf_repo": "unsloth/Qwen3-0.6B-GGUF",
+      "hf_filename": "Qwen3-0.6B-Q8_0.gguf",
+      "min_ram_gb": 2,
+      "is_default": true,
+      "superseded_by": null,
+      "tags": ["default", "recommended", "fast"]
+    },
+    {
+      "id": "qwen3-1b7-q8",
+      "name": "Qwen3 1.7B",
+      "description": "Better answers with still-fast responses. Good balance for most computers.",
+      "size_bytes": 1929379840,
+      "sha256": null,
+      "hf_repo": "unsloth/Qwen3-1.7B-GGUF",
+      "hf_filename": "Qwen3-1.7B-Q8_0.gguf",
+      "min_ram_gb": 4,
+      "is_default": false,
+      "superseded_by": null,
+      "tags": ["recommended", "balanced"]
+    },
+    {
+      "id": "qwen3-4b-q4",
+      "name": "Qwen3 4B",
+      "description": "High quality for capable machines. Best for detailed document analysis.",
+      "size_bytes": 2684354560,
+      "sha256": null,
+      "hf_repo": "unsloth/Qwen3-4B-GGUF",
+      "hf_filename": "Qwen3-4B-Q4_K_M.gguf",
+      "min_ram_gb": 6,
+      "is_default": false,
+      "superseded_by": null,
+      "tags": ["high-quality"]
+    },
+    {
+      "id": "qwen3-8b-q4",
+      "name": "Qwen3 8B",
+      "description": "Highest quality for powerful machines with 16 GB+ RAM and a GPU.",
+      "size_bytes": 5394046976,
+      "sha256": null,
+      "hf_repo": "unsloth/Qwen3-8B-GGUF",
+      "hf_filename": "Qwen3-8B-Q4_K_M.gguf",
+      "min_ram_gb": 10,
+      "is_default": false,
+      "superseded_by": null,
+      "tags": ["high-quality", "large-ram"]
+    }
+  ]
+}

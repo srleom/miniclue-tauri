@@ -27,7 +27,21 @@ pub struct AppConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppSettings {
-    // Settings can be added here in the future
+    /// Whether the local chat model is enabled (downloaded and configured).
+    /// Kept for backward-compatibility; the authoritative list is `local_chat_enabled_models`.
+    #[serde(default)]
+    pub local_chat_enabled: bool,
+    /// Absolute path to the local chat model GGUF file, if set.
+    /// Still used by the llama-server startup logic to know which file to load.
+    #[serde(default)]
+    pub local_chat_model_path: Option<String>,
+    /// ID of the model the llama-server was last started with (e.g. "qwen3-4b-q4").
+    #[serde(default)]
+    pub local_chat_model_id: Option<String>,
+    /// Set of model IDs that the user has enabled for the chat model selector.
+    /// Each downloaded model can be independently added/removed here.
+    #[serde(default)]
+    pub local_chat_enabled_models: Vec<String>,
 }
 
 impl AppConfig {

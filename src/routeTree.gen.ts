@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/__root"
+import { Route as OnboardingRouteImport } from "./routes/onboarding"
 import { Route as AppRouteImport } from "./routes/_app"
 import { Route as AppIndexRouteImport } from "./routes/_app/index"
 import { Route as AppFolderFolderIdRouteImport } from "./routes/_app/folder.$folderId"
 import { Route as AppDocumentDocumentIdRouteImport } from "./routes/_app/document.$documentId"
 
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: "/onboarding",
+  path: "/onboarding",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: "/_app",
   getParentRoute: () => rootRouteImport,
@@ -36,10 +42,12 @@ const AppDocumentDocumentIdRoute = AppDocumentDocumentIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   "/": typeof AppIndexRoute
+  "/onboarding": typeof OnboardingRoute
   "/document/$documentId": typeof AppDocumentDocumentIdRoute
   "/folder/$folderId": typeof AppFolderFolderIdRoute
 }
 export interface FileRoutesByTo {
+  "/onboarding": typeof OnboardingRoute
   "/": typeof AppIndexRoute
   "/document/$documentId": typeof AppDocumentDocumentIdRoute
   "/folder/$folderId": typeof AppFolderFolderIdRoute
@@ -47,18 +55,20 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/_app": typeof AppRouteWithChildren
+  "/onboarding": typeof OnboardingRoute
   "/_app/": typeof AppIndexRoute
   "/_app/document/$documentId": typeof AppDocumentDocumentIdRoute
   "/_app/folder/$folderId": typeof AppFolderFolderIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: "/" | "/document/$documentId" | "/folder/$folderId"
+  fullPaths: "/" | "/onboarding" | "/document/$documentId" | "/folder/$folderId"
   fileRoutesByTo: FileRoutesByTo
-  to: "/" | "/document/$documentId" | "/folder/$folderId"
+  to: "/onboarding" | "/" | "/document/$documentId" | "/folder/$folderId"
   id:
     | "__root__"
     | "/_app"
+    | "/onboarding"
     | "/_app/"
     | "/_app/document/$documentId"
     | "/_app/folder/$folderId"
@@ -66,10 +76,18 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  OnboardingRoute: typeof OnboardingRoute
 }
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
+    "/onboarding": {
+      id: "/onboarding"
+      path: "/onboarding"
+      fullPath: "/onboarding"
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/_app": {
       id: "/_app"
       path: ""
@@ -117,6 +135,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  OnboardingRoute: OnboardingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

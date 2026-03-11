@@ -30,6 +30,11 @@ struct ChatRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<i32>,
     stream: bool,
+    /// llama-server / Qwen3: disable the thinking (chain-of-thought) phase so
+    /// the model responds immediately without emitting <think>…</think> tokens.
+    /// Only sent when targeting the local llama-server endpoint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    chat_template_kwargs: Option<serde_json::Value>,
 }
 
 #[allow(unused_variables)]
@@ -104,9 +109,10 @@ async fn stream_chat_with_options(
     max_tokens: Option<i32>,
     base_url_override: Option<String>,
 ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LlmError>> + Send>>, LlmError> {
-    // Create client with timeout (60 seconds for streaming)
+    // Use only a connection timeout — no total/read timeout — so that slow local
+    // models generating long responses are not killed mid-stream.
     let client = Client::builder()
-        .timeout(Duration::from_secs(60))
+        .connect_timeout(Duration::from_secs(10))
         .build()
         .map_err(|e| LlmError::NetworkError(e.to_string()))?;
 
@@ -116,12 +122,22 @@ async fn stream_chat_with_options(
     };
     let url = format!("{}/chat/completions", base_url);
 
+    // For local llama-server endpoints disable the Qwen3 thinking phase so
+    // responses arrive without a lengthy <think>…</think> prefix.
+    let is_local = base_url.starts_with("http://127.0.0.1:");
+    let chat_template_kwargs = if is_local {
+        Some(serde_json::json!({"enable_thinking": false}))
+    } else {
+        None
+    };
+
     let request = ChatRequest {
         model,
         messages,
         temperature,
         max_tokens,
         stream: true,
+        chat_template_kwargs,
     };
 
     log_request_payload("stream_chat", &url, &request);
@@ -149,9 +165,13 @@ async fn stream_chat_with_options(
 
         let mut byte_stream = response.bytes_stream();
 
+        // Line-oriented buffer. We process on every '\n' so each SSE data line is
+        // dispatched as soon as it arrives — without waiting for the '\n\n' event
+        // boundary. This eliminates the one-token delay that was caused by buffering
+        // until the *next* event arrived before yielding the *current* one.
         let mut buffer = String::new();
 
-        while let Some(chunk_result) = byte_stream.next().await {
+        'outer: while let Some(chunk_result) = byte_stream.next().await {
             match chunk_result {
                 Ok(bytes) => {
                     let text = match std::str::from_utf8(&bytes) {
@@ -164,37 +184,36 @@ async fn stream_chat_with_options(
 
                     buffer.push_str(text);
 
-                    // Process complete SSE events (lines ending with \n\n)
-                    while let Some(event_end) = buffer.find("\n\n") {
-                        let event = buffer[..event_end].to_string();
-                        buffer = buffer[event_end + 2..].to_string();
+                    // Process every complete line (ending with '\n') immediately.
+                    while let Some(newline_pos) = buffer.find('\n') {
+                        let line = buffer[..newline_pos].trim_end_matches('\r').to_string();
+                        buffer = buffer[newline_pos + 1..].to_string();
 
-                        // Parse SSE format: "data: {...}"
-                        for line in event.lines() {
-                            if let Some(data) = line.strip_prefix("data: ") {
-                                if data.trim() == "[DONE]" {
-                                    return;
-                                }
+                        if let Some(data) = line.strip_prefix("data: ") {
+                            if data.trim() == "[DONE]" {
+                                break 'outer;
+                            }
 
-                                match serde_json::from_str::<ChatResponse>(data) {
-                                    Ok(response) => {
-                                        if let Some(choice) = response.choices.first() {
-                                            if let Some(delta) = &choice.delta {
-                                                if let Some(content) = &delta.content {
-                                                    if !content.is_empty() {
-                                                        yield Ok(content.clone());
-                                                    }
+                            match serde_json::from_str::<ChatResponse>(data) {
+                                Ok(response) => {
+                                    if let Some(choice) = response.choices.first() {
+                                        if let Some(delta) = &choice.delta {
+                                            if let Some(content) = &delta.content {
+                                                if !content.is_empty() {
+                                                    yield Ok(content.clone());
                                                 }
                                             }
                                         }
                                     }
-                                    Err(e) => {
-                                        log::error!("[stream_chat] Failed to parse SSE chunk: {}", e);
-                                        log::debug!("[stream_chat] Problematic line: {}", data);
-                                    }
+                                }
+                                Err(e) => {
+                                    log::error!("[stream_chat] Failed to parse SSE chunk: {}", e);
+                                    log::debug!("[stream_chat] Problematic line: {}", data);
                                 }
                             }
                         }
+                        // Empty lines (\n\n event boundaries) and comment lines are
+                        // silently skipped — no special handling needed.
                     }
                 }
                 Err(e) => {

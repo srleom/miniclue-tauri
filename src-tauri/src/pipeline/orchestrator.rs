@@ -67,7 +67,6 @@ pub async fn process_document(
     db: &SqlitePool,
     document_id: &str,
     file_path: &str,
-    api_key: &str,
     app_data_dir: &Path,
     app_handle: AppHandle,
 ) -> Result<(), OrchestratorError> {
@@ -181,7 +180,7 @@ pub async fn process_document(
         .map(|(id, text, page_num)| (id.clone(), text.clone(), *page_num))
         .collect();
 
-    let embeddings = super::embedder::generate_embeddings(&embeddings_data, api_key).await?;
+    let embeddings = super::embedder::generate_embeddings(&embeddings_data).await?;
 
     // Step 8: Save embeddings
     log::info!("Saving {} embeddings", embeddings.len());
@@ -198,6 +197,12 @@ pub async fn process_document(
     }
 
     db::embedding::save_embeddings(db, &embeddings_for_db).await?;
+
+    // Tag the document with the embedding model used
+    sqlx::query("UPDATE documents SET embedding_model = 'nomic-embed-text-v1.5' WHERE id = ?")
+        .bind(document_id)
+        .execute(db)
+        .await?;
 
     // Step 9: Mark as complete
     update_document_status(db, &app_handle, document_id, "complete", None).await?;

@@ -2,6 +2,7 @@ use futures::StreamExt;
 use serde::Serialize;
 use specta::Type;
 use tauri::ipc::Channel;
+use tauri::AppHandle;
 use tauri::State;
 use uuid::Uuid;
 
@@ -10,6 +11,7 @@ use crate::db;
 use crate::error::ApiError;
 use crate::models::chat::{Chat, ChatCreate, ChatUpdate, MessageResponse};
 use crate::rag;
+use crate::services::llama_server::ServerStatus;
 use crate::services::llm;
 use crate::state::AppState;
 use crate::validation;
@@ -160,6 +162,22 @@ fn resolve_model_credentials(
     model: &str,
     config: &AppConfig,
 ) -> Result<ModelCredentials, ApiError> {
+    // Local chat server — no API key required
+    if model == "local" || model.starts_with("local:") {
+        let model_id = model
+            .strip_prefix("local:")
+            .unwrap_or("local-model")
+            .to_string();
+        return Ok(ModelCredentials {
+            model: model_id,
+            api_key: String::new(),
+            base_url_override: Some(format!(
+                "http://127.0.0.1:{}/v1",
+                crate::services::llama_server::CHAT_PORT
+            )),
+        });
+    }
+
     if let Some(id) = model.strip_prefix("custom:") {
         let cp = config.get_custom_provider(id).ok_or_else(|| {
             ApiError::invalid_input(format!("Custom provider '{}' not found", id))
@@ -234,6 +252,7 @@ fn truncate_generated_title(raw_title: &str) -> String {
 #[specta::specta]
 pub async fn stream_chat(
     state: State<'_, AppState>,
+    app_handle: AppHandle,
     request: StreamChatRequest,
     on_event: Channel<ChatStreamEvent>,
 ) -> Result<(), ApiError> {
@@ -253,6 +272,34 @@ pub async fn stream_chat(
     // Gemini key is optional — only needed for query rewriting, RAG, and title generation
     let gemini_key: Option<String> = config_guard.get_api_key("gemini").cloned();
     drop(config_guard);
+
+    // If using local chat, ensure the server is running — restart it if it terminated.
+    if model == "local" || model.starts_with("local:") {
+        let chat_status = state.llama_server.chat_status().await;
+        if !matches!(chat_status, ServerStatus::Running | ServerStatus::Starting) {
+            log::info!(
+                "[stream_chat] local chat server is {:?} — attempting restart",
+                chat_status
+            );
+            let model_path = state
+                .config
+                .read()
+                .await
+                .settings
+                .local_chat_model_path
+                .clone()
+                .ok_or_else(|| {
+                    ApiError::invalid_input("Local chat model path not configured".to_string())
+                })?;
+            state
+                .llama_server
+                .start_chat_server(&app_handle, &model_path)
+                .await
+                .map_err(|e| {
+                    ApiError::internal_error(format!("Failed to restart local chat server: {e}"))
+                })?;
+        }
+    }
 
     // 1. Save user message
     let user_message_id = Uuid::new_v4().to_string();
@@ -289,34 +336,52 @@ pub async fn stream_chat(
         })
         .collect();
 
-    // 3. Rewrite query with history context — skip gracefully if no Gemini key
-    let rewritten_query = if let Some(ref gkey) = gemini_key {
-        rag::rewrite_query_streaming(&user_message, &history, gkey)
-            .await
-            .unwrap_or_else(|e| {
-                log::warn!("Query rewriting failed: {}, using original query", e);
-                user_message.clone()
-            })
-    } else {
-        log::info!("No Gemini key — skipping query rewriting, using original query");
-        user_message.clone()
+    // 3 & 4. Run query rewriting and RAG retrieval in parallel to minimise latency.
+    //
+    // Query rewriting is skipped when:
+    //   - no Gemini key is available, OR
+    //   - the user is on a local model (avoid cloud round-trips for local-only users), OR
+    //   - there is no conversation history (rewriting gives zero benefit on the first message).
+    //
+    // RAG retrieval always uses the *original* query so it can start immediately, in parallel
+    // with rewriting.  The rewritten query (when available) is used as the final user message
+    // sent to the LLM; chunks are retrieved from the original query with negligible quality
+    // difference because rewrites are minor rephrasing.
+    let is_local_model = model == "local" || model.starts_with("local:");
+    let has_history = !history.is_empty();
+    let should_rewrite = gemini_key.is_some() && !is_local_model && has_history;
+
+    let rewrite_fut = async {
+        if should_rewrite {
+            let gkey = gemini_key.as_deref().unwrap();
+            rag::rewrite_query_streaming(&user_message, &history, gkey)
+                .await
+                .unwrap_or_else(|e| {
+                    log::warn!("Query rewriting failed: {}, using original query", e);
+                    user_message.clone()
+                })
+        } else {
+            if is_local_model {
+                log::info!("Local model — skipping query rewriting");
+            } else if !has_history {
+                log::info!("No prior history — skipping query rewriting on first message");
+            } else {
+                log::info!("No Gemini key — skipping query rewriting");
+            }
+            user_message.clone()
+        }
     };
 
-    // 4. Retrieve relevant chunks via RAG — skip gracefully if no Gemini key
-    let chunks = if let Some(ref gkey) = gemini_key {
-        rag::retrieve_chunks(&rewritten_query, &document_id, &db, gkey, 5)
-            .await
-            .unwrap_or_else(|e| {
-                log::warn!("RAG retrieval failed: {}, using empty chunks", e);
-                vec![]
-            })
-    } else {
-        log::info!("No Gemini key — skipping RAG retrieval, using empty chunks");
+    let rag_fut = rag::retrieve_chunks(&user_message, &document_id, &db, 5);
+
+    let (rewritten_query, chunks) = tokio::join!(rewrite_fut, rag_fut);
+    let chunks = chunks.unwrap_or_else(|e| {
+        log::warn!("RAG retrieval failed: {}, using empty chunks", e);
         vec![]
-    };
+    });
 
-    // 5. Build RAG context
-    let rag_messages = rag::build_rag_context(&chunks, &history, &user_message, 5);
+    // 5. Build RAG context (rewritten query used as the final user message for the LLM)
+    let rag_messages = rag::build_rag_context(&chunks, &history, &rewritten_query, 5);
 
     // 6. Stream from LLM
     let mut stream = llm::stream_chat(
