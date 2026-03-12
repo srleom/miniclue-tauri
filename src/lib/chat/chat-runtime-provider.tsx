@@ -7,7 +7,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useSlideNavigation } from '@/lib/slide-navigation-context';
+import { usePageNavigation } from '@/lib/page-navigation-context';
 import { getChat } from '@/lib/tauri';
 import type { Chat } from '@/lib/types';
 import { chatKeys, useChatMessages, useSendMessage } from './use-chat-queries';
@@ -20,30 +20,29 @@ interface ChatRuntimeProviderProps {
 }
 
 /**
- * Parse @-mention slide references from the user's message text.
+ * Parse @-mention page references from the user's message text.
  *
  * Supports:
- *   @currentSlide  → resolves to currentPage
+ *   @currentPage  → resolves to currentPage
  *   @N             → literal page number N
  *
- * Returns { cleanedText, citedPages } where cleanedText has the @-tokens
- * preserved verbatim (so the user sees what they typed in their bubble) but
- * citedPages is a deduplicated array of page numbers to force-include in RAG.
+ * Returns { citedPages } where citedPages is a deduplicated array of page
+ * numbers to force-include in RAG.
  */
-function parseSlideMentions(
+function parsePageMentions(
   text: string,
   currentPage: number
 ): { citedPages: number[] } {
   const cited = new Set<number>();
 
-  // Match @currentSlide or @<number>
-  const mentionRegex = /@(currentSlide|\d+)/g;
+  // Match @currentPage or @<number>
+  const mentionRegex = /@(currentPage|\d+)/g;
   let match: RegExpExecArray | null;
 
   // biome-ignore lint/suspicious/noAssignInExpressions: standard regex loop pattern
   while ((match = mentionRegex.exec(text)) !== null) {
     const token = match[1];
-    if (token === 'currentSlide') {
+    if (token === 'currentPage') {
       cited.add(currentPage);
     } else {
       const pageNum = Number.parseInt(token, 10);
@@ -81,7 +80,7 @@ export function ChatRuntimeProvider({
   const cancelledRef = useRef(false);
 
   const queryClient = useQueryClient();
-  const { currentPage } = useSlideNavigation();
+  const { currentPage } = usePageNavigation();
 
   // Fetch messages from backend (already converted to ThreadMessageLike)
   const { data: backendMessages = [] } = useChatMessages(documentId, chatId);
@@ -193,8 +192,8 @@ export function ChatRuntimeProvider({
 
       const input = message.content[0].text;
 
-      // Parse @-mention slide references before sending
-      const { citedPages } = parseSlideMentions(input, currentPage);
+      // Parse @-mention page references before sending
+      const { citedPages } = parsePageMentions(input, currentPage);
 
       // Reset cancellation flag for the new request.
       // If a prior stream was cancelled, also flush any stale optimistic messages

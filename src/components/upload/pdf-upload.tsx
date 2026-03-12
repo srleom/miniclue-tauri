@@ -81,7 +81,7 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
 
       toast.dismiss(toastId);
       toast.success(
-        `Successfully started processing ${documentIds.length} lecture${documentIds.length > 1 ? 's' : ''}!`
+        `Successfully started processing ${documentIds.length} document${documentIds.length > 1 ? 's' : ''}!`
       );
 
       // Invalidate documents query to refresh the list
@@ -172,7 +172,7 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
               <div>
                 <h3 className="text-lg font-semibold">
                   {isFolderPage
-                    ? 'Upload lectures here'
+                    ? 'Upload documents here'
                     : 'Click to select PDF files'}
                 </h3>
                 <p className="text-muted-foreground mt-2 text-sm">
@@ -226,7 +226,7 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
           <AlertTitle>Rate Limit Warning</AlertTitle>
           <AlertDescription>
             If you&apos;re using the free tier of Gemini, uploading more than 2
-            files at once might hit your API rate limits, causing lecture
+            files at once might hit your API rate limits, causing document
             processing to fail. Proceed with caution.
           </AlertDescription>
         </Alert>

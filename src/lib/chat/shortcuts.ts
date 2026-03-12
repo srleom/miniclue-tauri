@@ -1,3 +1,3 @@
 export const SHORTCUTS = [
-  { id: 'current-slide', label: 'Current Slide', command: '@current-slide' },
+  { id: 'current-page', label: 'Current Page', command: '@current-page' },
 ];

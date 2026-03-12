@@ -139,7 +139,7 @@ pub struct StreamChatRequest {
     pub chat_id: String,
     pub message: String, // User's message text
     pub model: String,   // Selected model
-    /// Pages explicitly cited by the user (e.g. via @5 or @currentSlide).
+    /// Pages explicitly cited by the user (e.g. via @5 or @currentPage).
     /// These pages are force-included in the RAG context regardless of semantic similarity.
     pub cited_pages: Option<Vec<i32>>,
 }
@@ -385,7 +385,7 @@ pub async fn stream_chat(
         vec![]
     });
 
-    // Force-include chunks from explicitly cited pages (user's @slide references).
+    // Force-include chunks from explicitly cited pages (user's @page references).
     // These are prepended so they appear first in the LLM context, then deduplicated
     // to avoid repeating the same chunk from semantic retrieval.
     if let Some(cited_pages) = &request.cited_pages {

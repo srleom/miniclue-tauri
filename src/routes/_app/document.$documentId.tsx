@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/resizable';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import { SlideNavigationContext } from '@/lib/slide-navigation-context';
+import { PageNavigationContext } from '@/lib/page-navigation-context';
 import { getDocumentPdfPath } from '@/lib/tauri';
 import { useDocument, useFolder } from '../../hooks/use-queries';
 
@@ -107,8 +107,8 @@ function DocumentPage() {
   }, []);
 
   // Memoize context value to prevent unnecessary re-renders of all context consumers
-  // (SlideMentionInput, SlideLink) on every scroll or streaming update.
-  const slideNavContextValue = useMemo(
+  // (PageMentionInput, PageLink) on every scroll or streaming update.
+  const pageNavContextValue = useMemo(
     () => ({ currentPage, totalPages, navigateToPage }),
     [currentPage, totalPages, navigateToPage]
   );
@@ -122,7 +122,7 @@ function DocumentPage() {
   }
 
   return (
-    <SlideNavigationContext.Provider value={slideNavContextValue}>
+    <PageNavigationContext.Provider value={pageNavContextValue}>
       <div className="flex h-full flex-col">
         {/* Header */}
         <div className="flex h-14 shrink-0 items-center border-b">
@@ -184,6 +184,6 @@ function DocumentPage() {
           </ResizablePanelGroup>
         </div>
       </div>
-    </SlideNavigationContext.Provider>
+    </PageNavigationContext.Provider>
   );
 }

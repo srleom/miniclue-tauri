@@ -1,19 +1,19 @@
 /**
- * remarkSlideCitations
+ * remarkPageCitations
  *
- * A remark plugin that transforms `[Slide N]` text patterns in markdown
- * into `<a href="slide://N">Slide N</a>` link nodes, which the markdown
- * renderer then intercepts and renders as `<SlideLink>` components.
+ * A remark plugin that transforms `[Page N]` text patterns in markdown
+ * into `<a href="page://N">Page N</a>` link nodes, which the markdown
+ * renderer then intercepts and renders as `<PageLink>` components.
  *
- * Pattern matched: [Slide N] or [slide N] where N is a positive integer.
+ * Pattern matched: [Page N] or [page N] where N is a positive integer.
  */
 import type { Link, PhrasingContent, Root, Text } from 'mdast';
 import type { Plugin } from 'unified';
 import { visit } from 'unist-util-visit';
 
-const SLIDE_PATTERN = /\[Slide\s+(\d+)\]/gi;
+const PAGE_PATTERN = /\[Page\s+(\d+)\]/gi;
 
-export const remarkSlideCitations: Plugin<[], Root> = () => {
+export const remarkPageCitations: Plugin<[], Root> = () => {
   return (tree: Root) => {
     visit(tree, 'text', (node: Text, index, parent) => {
       if (!parent || index === undefined) return;
@@ -22,11 +22,11 @@ export const remarkSlideCitations: Plugin<[], Root> = () => {
       const newNodes: PhrasingContent[] = [];
       let lastIndex = 0;
 
-      SLIDE_PATTERN.lastIndex = 0;
+      PAGE_PATTERN.lastIndex = 0;
       let match: RegExpExecArray | null;
 
       // biome-ignore lint/suspicious/noAssignInExpressions: standard regex loop pattern
-      while ((match = SLIDE_PATTERN.exec(text)) !== null) {
+      while ((match = PAGE_PATTERN.exec(text)) !== null) {
         const matchStart = match.index;
         const matchEnd = matchStart + match[0].length;
         const pageNumber = match[1];
@@ -39,15 +39,15 @@ export const remarkSlideCitations: Plugin<[], Root> = () => {
           } as Text);
         }
 
-        // Create a link node with the slide:// protocol
+        // Create a link node with the page:// protocol
         const linkNode: Link = {
           type: 'link',
-          url: `slide://${pageNumber}`,
+          url: `page://${pageNumber}`,
           title: null,
           children: [
             {
               type: 'text',
-              value: `Slide ${pageNumber}`,
+              value: `Page ${pageNumber}`,
             } as Text,
           ],
         };

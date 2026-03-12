@@ -1,18 +1,18 @@
 /**
- * SlideLink component — renders [Slide N] citations as clickable badges
+ * PageLink component — renders [Page N] citations as clickable badges
  * that navigate the PDF viewer to the referenced page.
  */
 import { BookOpen } from 'lucide-react';
-import { useSlideNavigation } from '@/lib/slide-navigation-context';
+import { usePageNavigation } from '@/lib/page-navigation-context';
 import { cn } from '@/lib/utils';
 
-interface SlideLinkProps {
+interface PageLinkProps {
   page: number;
   className?: string;
 }
 
-export function SlideLink({ page, className }: SlideLinkProps) {
-  const { navigateToPage } = useSlideNavigation();
+export function PageLink({ page, className }: PageLinkProps) {
+  const { navigateToPage } = usePageNavigation();
 
   return (
     <button
@@ -26,11 +26,11 @@ export function SlideLink({ page, className }: SlideLinkProps) {
         'no-underline',
         className
       )}
-      title={`Go to slide ${page}`}
-      aria-label={`Navigate to slide ${page}`}
+      title={`Go to page ${page}`}
+      aria-label={`Navigate to page ${page}`}
     >
       <BookOpen className="h-3 w-3 shrink-0" />
-      <span>Slide {page}</span>
+      <span>Page {page}</span>
     </button>
   );
 }

@@ -1,18 +1,18 @@
 'use client';
 
 /**
- * SlideMentionInput
+ * PageMentionInput
  *
  * Wraps the assistant-ui ComposerPrimitive.Input and adds a floating
  * suggestion popup when the user types "@". Supports:
- *   - @currentSlide  → resolved to the actual page number at send-time
- *   - @N             → reference a specific slide number
+ *   - @currentPage  → resolved to the actual page number at send-time
+ *   - @N             → reference a specific page number
  *
  * Fuzzy matching rules:
- *   - Empty query:   show @currentSlide + all numbered slides
+ *   - Empty query:   show @currentPage + all numbered pages
  *   - Numeric query: show all pages whose number starts with the typed digits
  *                    (e.g. "@1" → 1, 10, 11…19, 100…), exact match first
- *   - Text query:    fuzzy-match against "currentSlide" using both substring
+ *   - Text query:    fuzzy-match against "currentPage" using both substring
  *                    and character-subsequence matching
  *
  * The raw text (with @-tokens) is stored verbatim in the composer input.
@@ -23,7 +23,7 @@
 import { ComposerPrimitive, useComposerRuntime } from '@assistant-ui/react';
 import { BookOpen } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSlideNavigation } from '@/lib/slide-navigation-context';
+import { usePageNavigation } from '@/lib/page-navigation-context';
 import { cn } from '@/lib/utils';
 
 interface SuggestionItem {
@@ -32,7 +32,7 @@ interface SuggestionItem {
   description: string;
 }
 
-interface SlideMentionInputProps {
+interface PageMentionInputProps {
   className?: string;
   rows?: number;
   autoFocus?: boolean;
@@ -42,7 +42,7 @@ interface SlideMentionInputProps {
 
 /**
  * Returns true if `query` fuzzy-matches `target` as a character subsequence.
- * E.g. "cs" matches "currentSlide", "csl" matches "currentSlide".
+ * E.g. "cp" matches "currentPage", "cpa" matches "currentPage".
  */
 function isFuzzyMatch(query: string, target: string): boolean {
   const q = query.toLowerCase();
@@ -58,10 +58,10 @@ function isFuzzyMatch(query: string, target: string): boolean {
  * Build the suggestion list for a given mentionQuery.
  *
  * Priority order:
- *  1. @currentSlide (if query is empty, is a substring of "currentslide",
- *     or fuzzy-matches "currentslide")
+ *  1. @currentPage (if query is empty, is a substring of "currentpage",
+ *     or fuzzy-matches "currentpage")
  *  2. Exact numeric match (e.g. @3 when user typed "3")
- *  3. Prefix-matched numeric slides (e.g. @10…@19 when user typed "1")
+ *  3. Prefix-matched numeric pages (e.g. @10…@19 when user typed "1")
  */
 function buildSuggestions(
   mentionQuery: string,
@@ -71,30 +71,30 @@ function buildSuggestions(
   const items: SuggestionItem[] = [];
   const q = mentionQuery.toLowerCase();
 
-  // --- @currentSlide ---
-  const currentSlideItem: SuggestionItem = {
-    label: '@currentSlide',
-    value: '@currentSlide',
-    description: `Current slide (page ${currentPage})`,
+  // --- @currentPage ---
+  const currentPageItem: SuggestionItem = {
+    label: '@currentPage',
+    value: '@currentPage',
+    description: `Current page (${currentPage})`,
   };
 
-  const showCurrentSlide =
-    q === '' || 'currentslide'.includes(q) || isFuzzyMatch(q, 'currentslide');
+  const showCurrentPage =
+    q === '' || 'currentpage'.includes(q) || isFuzzyMatch(q, 'currentpage');
 
-  if (showCurrentSlide) {
-    items.push(currentSlideItem);
+  if (showCurrentPage) {
+    items.push(currentPageItem);
   }
 
   // --- Numeric suggestions ---
   const maxPage = totalPages > 0 ? totalPages : 0;
 
   if (q === '') {
-    // Show all slides when query is empty
+    // Show all pages when query is empty
     for (let i = 1; i <= maxPage; i++) {
       items.push({
         label: `@${i}`,
         value: `@${i}`,
-        description: `Slide ${i}`,
+        description: `Page ${i}`,
       });
     }
   } else if (/^\d+$/.test(q)) {
@@ -106,7 +106,7 @@ function buildSuggestions(
       items.push({
         label: `@${exact}`,
         value: `@${exact}`,
-        description: `Slide ${exact}`,
+        description: `Page ${exact}`,
       });
     }
 
@@ -118,24 +118,24 @@ function buildSuggestions(
         items.push({
           label: `@${i}`,
           value: `@${i}`,
-          description: `Slide ${i}`,
+          description: `Page ${i}`,
         });
       }
     }
   }
-  // Pure text query: only @currentSlide (already handled above), no numeric items
+  // Pure text query: only @currentPage (already handled above), no numeric items
 
   return items;
 }
 
-export function SlideMentionInput({
+export function PageMentionInput({
   className,
   rows,
   autoFocus,
   placeholder,
   'aria-label': ariaLabel,
-}: SlideMentionInputProps) {
-  const { currentPage, totalPages } = useSlideNavigation();
+}: PageMentionInputProps) {
+  const { currentPage, totalPages } = usePageNavigation();
   const composerRuntime = useComposerRuntime();
 
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -274,7 +274,7 @@ export function SlideMentionInput({
     <div className="relative w-full">
       <ComposerPrimitive.Input
         ref={inputRef}
-        placeholder={placeholder ?? 'Send a message... (type @ to cite slides)'}
+        placeholder={placeholder ?? 'Send a message... (type @ to cite pages)'}
         className={className}
         rows={rows}
         autoFocus={autoFocus}
@@ -289,12 +289,12 @@ export function SlideMentionInput({
           ref={suggestionsRef}
           className="absolute bottom-full left-0 mb-1 z-50 w-64 rounded-lg border border-border bg-popover shadow-md overflow-hidden"
           role="listbox"
-          aria-label="Slide suggestions"
+          aria-label="Page suggestions"
         >
           <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border/50 bg-muted/30">
             <BookOpen className="h-3 w-3 text-muted-foreground" />
             <span className="text-xs font-medium text-muted-foreground">
-              Cite a slide
+              Cite a page
             </span>
           </div>
           <div className="max-h-48 overflow-y-auto">
