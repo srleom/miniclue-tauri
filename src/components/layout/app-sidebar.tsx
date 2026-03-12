@@ -1,6 +1,5 @@
-import * as React from 'react';
 import { Link, useLocation, useNavigate } from '@tanstack/react-router';
-import { Sparkle } from 'lucide-react';
+import * as React from 'react';
 import {
   Sidebar,
   SidebarContent,
@@ -10,19 +9,19 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { NavPrimary } from './nav-primary';
-import { NavFolders } from './nav-folders';
-import { NavRecents } from './nav-recents';
-import { NavSecondary } from './nav-secondary';
 import {
+  useCreateFolder,
+  useDeleteDocument,
+  useDeleteFolder,
   useFoldersWithDocuments,
   useRecentDocuments,
-  useCreateFolder,
-  useUpdateFolder,
-  useDeleteFolder,
   useUpdateDocument,
-  useDeleteDocument,
+  useUpdateFolder,
 } from '../../hooks/use-queries';
+import { NavFolders } from './nav-folders';
+import { NavPrimary } from './nav-primary';
+import { NavRecents } from './nav-recents';
+import { NavSecondary } from './nav-secondary';
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const location = useLocation();
@@ -173,9 +172,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="flex items-center gap-2">
                 <Link
                   to="/"
-                  className="bg-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-md"
+                  className="flex items-center justify-center rounded-md"
                 >
-                  <Sparkle className="text-primary-foreground size-4" />
+                  <img src="/logo.svg" alt="MiniClue" className="size-24" />
                 </Link>
               </div>
             </SidebarMenuButton>

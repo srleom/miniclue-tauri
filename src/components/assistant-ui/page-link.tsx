@@ -19,8 +19,8 @@ export function PageLink({ page, className }: PageLinkProps) {
       type="button"
       onClick={() => navigateToPage(page)}
       className={cn(
-        badgeVariants({ variant: 'secondary' }),
-        'cursor-pointer hover:bg-secondary/80 transition-colors align-baseline mx-0.5',
+        badgeVariants({ variant: 'secondaryOutline' }),
+        'cursor-pointer align-baseline mx-0.5 hover:opacity-80 transition-opacity',
         className
       )}
       title={`Go to page ${page}`}

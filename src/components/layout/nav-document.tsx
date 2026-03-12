@@ -6,7 +6,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar';
-import { MoreHorizontal, Presentation } from 'lucide-react';
+import { MoreHorizontal, File } from 'lucide-react';
 
 type ActionResponse<T> = {
   data?: T;
@@ -63,7 +63,7 @@ export default function NavDocument({
           params={{ documentId: document.document_id }}
           onClick={handleNavigation}
         >
-          <Presentation />
+          <File />
           <span>{document.title}</span>
         </Link>
       </SidebarMenuButton>

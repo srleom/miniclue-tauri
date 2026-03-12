@@ -1,3 +1,4 @@
+import type { TextMessagePartProps } from '@assistant-ui/react';
 import {
   ActionBarPrimitive,
   AuiIf,
@@ -20,7 +21,8 @@ import {
 import type { FC } from 'react';
 import { MarkdownText } from '@/components/assistant-ui/markdown-text';
 import { ModelSelector } from '@/components/assistant-ui/model-selector';
-import { PageMentionInput } from '@/components/assistant-ui/page-mention-input';
+import { PageLink } from '@/components/assistant-ui/page-link';
+import { TiptapPageMentionInput } from '@/components/assistant-ui/tiptap-page-mention-input';
 import { ToolFallback } from '@/components/assistant-ui/tool-fallback';
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button';
 import { Button } from '@/components/ui/button';
@@ -105,12 +107,10 @@ const Composer: FC<{
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
       <ComposerPrimitive.AttachmentDropzone className="aui-composer-attachment-dropzone flex w-full flex-col rounded-2xl border border-input bg-background px-1 pt-2 outline-none transition-shadow has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50">
-        <PageMentionInput
+        <TiptapPageMentionInput
           placeholder="Send a message... (type @ to cite pages)"
           className="aui-composer-input mb-1 max-h-32 min-h-14 w-full resize-none bg-transparent px-4 pt-2 pb-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-0"
-          rows={1}
           autoFocus
-          aria-label="Message input"
         />
         <ComposerAction
           selectedModel={selectedModel}
@@ -243,6 +243,23 @@ const AssistantActionBar: FC = () => {
   );
 };
 
+const UserMessageText: FC<TextMessagePartProps> = ({ text }) => {
+  const parts = text.split(/(@\d+)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const match = part.match(/^@(\d+)$/);
+        if (match) {
+          // biome-ignore lint/suspicious/noArrayIndexKey: split parts have no stable identity
+          return <PageLink key={i} page={Number(match[1])} />;
+        }
+        // biome-ignore lint/suspicious/noArrayIndexKey: split parts have no stable identity
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+};
+
 const UserMessage: FC = () => {
   return (
     <MessagePrimitive.Root
@@ -251,7 +268,7 @@ const UserMessage: FC = () => {
     >
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
         <div className="aui-user-message-content wrap-break-word rounded-2xl bg-muted px-4 py-2.5 text-foreground text-sm">
-          <MessagePrimitive.Parts />
+          <MessagePrimitive.Parts components={{ Text: UserMessageText }} />
         </div>
         <div className="aui-user-action-bar-wrapper absolute top-1/2 left-0 -translate-x-full -translate-y-1/2 pr-2">
           <UserActionBar />

@@ -168,3 +168,18 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Tiptap rich text composer */
+.tiptap-composer .ProseMirror {
+  outline: none;
+}
+.tiptap-composer .ProseMirror p {
+  margin: 0;
+}
+.tiptap-composer .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  float: left;
+  pointer-events: none;
+  height: 0;
+}
