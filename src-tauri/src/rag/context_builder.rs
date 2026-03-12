@@ -70,9 +70,7 @@ mod tests {
         assert_eq!(messages[0].content, CHAT_RESPONSE_SYSTEM_PROMPT);
         assert_eq!(messages[1].role, "user");
         assert!(messages[1].content.contains("<document_context>"));
-        assert!(messages[1]
-            .content
-            .contains("<page id=\"12\" chunk=\"0\">"));
+        assert!(messages[1].content.contains("<page id=\"12\" chunk=\"0\">"));
         assert_eq!(messages[2].role, "assistant");
         assert_eq!(messages[3].role, "user");
         assert_eq!(messages[3].content, "Explain again");
