@@ -3,7 +3,7 @@ import type { Provider } from '@/lib/types';
 
 export const providerDisplayNames: Record<Provider, string> = {
   openai: 'OpenAI',
-  gemini: 'Google Gemini',
+  gemini: 'Gemini',
   anthropic: 'Anthropic',
   xai: 'xAI',
   deepseek: 'DeepSeek',

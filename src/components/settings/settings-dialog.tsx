@@ -1,4 +1,4 @@
-import { Cpu, Sparkles } from 'lucide-react';
+import { Cloud, HardDrive } from 'lucide-react';
 import * as React from 'react';
 import {
   Dialog,
@@ -18,13 +18,13 @@ import {
 } from '@/components/ui/sidebar';
 import type { Provider } from '@/lib/types';
 import { useModels } from '../../hooks/use-queries';
-import { LocalAITab } from './local-ai-tab';
-import { ModelsList } from './models-list';
+import { CloudTab } from './cloud-tab';
+import { LocalTab } from './local-tab';
 import { providers } from './provider-constants';
 
 const navItems = [
-  { name: 'Local AI', icon: Sparkles, value: 'local-ai' },
-  { name: 'Providers', icon: Cpu, value: 'providers' },
+  { name: 'Cloud', icon: Cloud, value: 'cloud' },
+  { name: 'Local', icon: HardDrive, value: 'local' },
 ] as const;
 
 type NavValue = (typeof navItems)[number]['value'];
@@ -43,7 +43,7 @@ export function SettingsDialog({
   initialTab,
 }: SettingsDialogProps) {
   const [activeSection, setActiveSection] = React.useState<NavValue>(
-    initialTab ?? 'local-ai'
+    initialTab ?? 'cloud'
   );
 
   const { data: modelsData, error: modelsError } = useModels();
@@ -155,21 +155,10 @@ export function SettingsDialog({
 
           <main className="flex h-[600px] flex-1 flex-col overflow-hidden py-8 px-6">
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0">
-              {activeSection === 'local-ai' && <LocalAITab />}
+              {activeSection === 'local' && <LocalTab />}
 
-              {activeSection === 'providers' && (
-                <div>
-                  <div>
-                    <h1 className="text-2xl font-semibold">Providers</h1>
-                    <p className="text-muted-foreground mt-2">
-                      Manage API keys and enable the models you want available
-                      in chat.
-                    </p>
-                  </div>
-                  <div className="mt-8">
-                    <ModelsList providers={allProvidersData} />
-                  </div>
-                </div>
+              {activeSection === 'cloud' && (
+                <CloudTab providers={allProvidersData} />
               )}
             </div>
           </main>

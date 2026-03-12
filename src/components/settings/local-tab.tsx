@@ -77,7 +77,7 @@ function ServerStatusBadge({ status }: { status: string }) {
 // Main component
 // ---------------------------------------------------------------------------
 
-export function LocalAITab() {
+export function LocalTab() {
   const [catalog, setCatalog] = React.useState<ModelCatalog | null>(null);
   const [recommendedId, setRecommendedId] = React.useState<string | null>(null);
   const [statuses, setStatuses] = React.useState<
@@ -232,153 +232,159 @@ export function LocalAITab() {
   }
 
   return (
-    <div className="space-y-6">
+    <div>
       {/* Header */}
       <div>
-        <h2 className="text-base font-semibold">Local AI</h2>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Run AI fully on your device — no API keys required. Chat models are
-          downloaded once and work completely offline.
+        <h1 className="text-2xl font-semibold">Local</h1>
+        <p className="text-muted-foreground mt-2">
+          Run AI fully on your device. Chat models are downloaded once and work
+          completely offline.
         </p>
       </div>
 
-      {/* Embed server status */}
-      <div className="rounded-lg border p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">Embedding server</p>
-            <p className="text-muted-foreground text-xs">
-              Always-on · port 28881 · powers document indexing
-            </p>
+      <div className="mt-8 space-y-6">
+        {/* Embed server status */}
+        <div className="bg-card border-border/60 rounded-lg border p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Embedding server</p>
+              <p className="text-muted-foreground text-xs">
+                Always-on · Port 28881 · Powers document indexing
+              </p>
+            </div>
+            {serverStatus ? (
+              <ServerStatusBadge status={serverStatus.embed} />
+            ) : (
+              <Badge variant="outline" className="text-xs">
+                —
+              </Badge>
+            )}
           </div>
-          {serverStatus ? (
-            <ServerStatusBadge status={serverStatus.embed} />
-          ) : (
-            <Badge variant="outline" className="text-xs">
-              —
-            </Badge>
-          )}
         </div>
-      </div>
 
-      <Separator />
+        <Separator />
 
-      {/* Model list */}
-      <div className="space-y-3">
-        <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-tighter">
-          Chat Models
-        </h3>
+        {/* Model list */}
+        <div className="space-y-3">
+          <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-tighter">
+            Chat Models
+          </h3>
 
-        {catalog.models.map((model) => {
-          const st = statuses[model.id];
-          const isDownloaded = st?.isDownloaded ?? false;
-          const dlProgress = downloading[model.id];
-          const isRec = model.id === recommendedId;
-          const isEnabled = enabledModelIds.has(model.id);
+          {catalog.models.map((model) => {
+            const st = statuses[model.id];
+            const isDownloaded = st?.isDownloaded ?? false;
+            const dlProgress = downloading[model.id];
+            const isRec = model.id === recommendedId;
+            const isEnabled = enabledModelIds.has(model.id);
 
-          return (
-            <div key={model.id} className="rounded-lg border p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium">{model.name}</p>
-                    {isRec && (
-                      <Badge variant="secondary" className="text-xs">
-                        Recommended
-                      </Badge>
-                    )}
-                    {isDownloaded && (
-                      <Badge
-                        variant="outline"
-                        className="gap-1 text-xs text-green-600"
-                      >
-                        <HardDrive className="size-3" />
-                        Downloaded
-                      </Badge>
+            return (
+              <div
+                key={model.id}
+                className="bg-card border-border/60 rounded-lg border p-4"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{model.name}</p>
+                      {isRec && (
+                        <Badge variant="secondary" className="text-xs">
+                          Recommended
+                        </Badge>
+                      )}
+                      {isDownloaded && (
+                        <Badge
+                          variant="outline"
+                          className="gap-1 text-xs text-green-600"
+                        >
+                          <HardDrive className="size-3" />
+                          Downloaded
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-muted-foreground mt-0.5 text-xs">
+                      {model.description} · {formatBytes(model.sizeBytes)}
+                    </p>
+
+                    {/* Download progress bar */}
+                    {dlProgress && (
+                      <div className="mt-2 space-y-1">
+                        <Progress
+                          value={
+                            dlProgress.total > 0
+                              ? (dlProgress.downloaded / dlProgress.total) * 100
+                              : undefined
+                          }
+                          className="h-1.5"
+                        />
+                        <p className="text-muted-foreground text-xs">
+                          {formatBytes(dlProgress.downloaded)} /{' '}
+                          {dlProgress.total > 0
+                            ? formatBytes(dlProgress.total)
+                            : '…'}
+                        </p>
+                      </div>
                     )}
                   </div>
-                  <p className="text-muted-foreground mt-0.5 text-xs">
-                    {model.description} · {formatBytes(model.sizeBytes)}
-                  </p>
 
-                  {/* Download progress bar */}
-                  {dlProgress && (
-                    <div className="mt-2 space-y-1">
-                      <Progress
-                        value={
-                          dlProgress.total > 0
-                            ? (dlProgress.downloaded / dlProgress.total) * 100
-                            : undefined
-                        }
-                        className="h-1.5"
-                      />
-                      <p className="text-muted-foreground text-xs">
-                        {formatBytes(dlProgress.downloaded)} /{' '}
-                        {dlProgress.total > 0
-                          ? formatBytes(dlProgress.total)
-                          : '…'}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Actions */}
-                <div className="flex shrink-0 items-center gap-2">
-                  {isDownloaded ? (
-                    <>
-                      {/* Enable/disable toggle — independent per model */}
-                      <div className="flex items-center gap-1.5">
-                        {isEnabled && serverStatus && (
-                          <ServerStatusBadge status={serverStatus.chat} />
-                        )}
-                        <Switch
-                          checked={isEnabled}
+                  {/* Actions */}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {isDownloaded ? (
+                      <>
+                        {/* Enable/disable toggle — independent per model */}
+                        <div className="flex items-center gap-1.5">
+                          {isEnabled && serverStatus && (
+                            <ServerStatusBadge status={serverStatus.chat} />
+                          )}
+                          <Switch
+                            checked={isEnabled}
+                            disabled={busy}
+                            onCheckedChange={(v) =>
+                              handleToggleEnabled(model.id, v)
+                            }
+                            aria-label={`Use ${model.name} for local chat`}
+                          />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           disabled={busy}
-                          onCheckedChange={(v) =>
-                            handleToggleEnabled(model.id, v)
-                          }
-                          aria-label={`Use ${model.name} for local chat`}
-                        />
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={busy}
-                        onClick={() => handleDelete(model.id)}
-                        aria-label={`Delete ${model.name}`}
-                      >
-                        <Trash2 className="size-4 text-destructive" />
+                          onClick={() => handleDelete(model.id)}
+                          aria-label={`Delete ${model.name}`}
+                        >
+                          <Trash2 className="size-4 text-destructive" />
+                        </Button>
+                      </>
+                    ) : dlProgress ? (
+                      <Button variant="outline" size="sm" disabled>
+                        Downloading…
                       </Button>
-                    </>
-                  ) : dlProgress ? (
-                    <Button variant="outline" size="sm" disabled>
-                      Downloading…
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => handleDownload(model.id)}
-                    >
-                      <Download className="mr-1.5 size-3.5" />
-                      Download
-                    </Button>
-                  )}
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => handleDownload(model.id)}
+                        className="gap-1.5"
+                      >
+                        <Download className="size-3.5" />
+                        Download
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Error display */}
-      {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3">
-          <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
-          <p className="text-sm text-destructive">{error}</p>
+            );
+          })}
         </div>
-      )}
+
+        {/* Error display */}
+        {error && (
+          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+            <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

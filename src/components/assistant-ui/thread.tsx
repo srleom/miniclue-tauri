@@ -15,7 +15,6 @@ import {
   ChevronRightIcon,
   CopyIcon,
   PencilIcon,
-  RefreshCwIcon,
   SquareIcon,
 } from 'lucide-react';
 import type { FC } from 'react';
@@ -231,14 +230,15 @@ const AssistantActionBar: FC = () => {
           </AuiIf>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-      <ActionBarPrimitive.Reload asChild>
+      {/* TODO: Add reload functionality */}
+      {/* <ActionBarPrimitive.Reload asChild>
         <TooltipIconButton tooltip="Refresh">
           <RefreshCwIcon
             strokeWidth={2}
             className="size-3.5 hover:text-foreground"
           />
         </TooltipIconButton>
-      </ActionBarPrimitive.Reload>
+      </ActionBarPrimitive.Reload> */}
     </ActionBarPrimitive.Root>
   );
 };

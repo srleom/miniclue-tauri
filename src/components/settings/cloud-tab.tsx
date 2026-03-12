@@ -1,11 +1,14 @@
-'use client';
-
+import { zodResolver } from '@hookform/resolvers/zod';
+// third-party
+import { openUrl } from '@tauri-apps/plugin-opener';
 // icons
 import {
   Check,
   ChevronDown,
-  ChevronRight,
   Cpu,
+  ExternalLink,
+  Eye,
+  EyeOff,
   Plus,
   Server,
   Trash2,
@@ -14,12 +17,13 @@ import {
 // react
 import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-// third-party
+import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
-import { ApiKeyDialog } from '@/components/settings/api-key-dialog';
+import * as z from 'zod';
 // code
 import {
   providerDisplayNames,
+  providerHelpUrls,
   providerLogos,
 } from '@/components/settings/provider-constants';
 import {
@@ -40,15 +44,159 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
   useCustomProviders,
   useDeleteApiKey,
   useDeleteCustomProvider,
+  useStoreApiKey,
   useUpdateModelPreference,
 } from '@/hooks/use-queries';
 import type { CustomProviderResponse, Provider } from '@/lib/types';
+import { getErrorMessage } from '@/lib/utils';
 import { CustomProviderDialog } from './custom-provider-dialog';
+
+// ---------------------------------------------------------------------------
+// Inline API key form
+// ---------------------------------------------------------------------------
+
+const apiKeySchema = z.object({
+  apiKey: z.string().min(1, 'API key is required'),
+});
+type ApiKeyFormValues = z.infer<typeof apiKeySchema>;
+
+function ApiKeyInlineForm({
+  provider,
+  hasKey,
+  onSuccess,
+  onCancel,
+}: {
+  provider: Provider;
+  hasKey: boolean;
+  onSuccess: () => void;
+  onCancel: () => void;
+}) {
+  const [showKey, setShowKey] = useState(false);
+  const storeApiKey = useStoreApiKey();
+
+  const form = useForm<ApiKeyFormValues>({
+    resolver: zodResolver(apiKeySchema),
+    defaultValues: { apiKey: '' },
+  });
+
+  const onSubmit = async (values: ApiKeyFormValues) => {
+    try {
+      await storeApiKey.mutateAsync({ provider, apiKey: values.apiKey });
+      toast.success(
+        `${providerDisplayNames[provider]} API key ${hasKey ? 'updated' : 'connected'}`
+      );
+      form.reset();
+      onSuccess();
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    }
+  };
+
+  const placeholder =
+    provider === 'openai'
+      ? 'sk-...'
+      : provider === 'anthropic'
+        ? 'sk-ant-...'
+        : 'Enter your API key';
+
+  return (
+    <div className="border-border/40 mt-2 border-t pt-3">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+          <FormField
+            control={form.control}
+            name="apiKey"
+            render={({ field }) => (
+              <FormItem>
+                <FormControl>
+                  <div className="relative">
+                    <Input
+                      {...field}
+                      type={showKey ? 'text' : 'password'}
+                      className="pr-10 font-mono text-sm tracking-tight"
+                      placeholder={placeholder}
+                      disabled={storeApiKey.isPending}
+                      autoComplete="off"
+                      autoFocus
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-foreground absolute top-0 right-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowKey(!showKey)}
+                    >
+                      {showKey ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                      <span className="sr-only">
+                        {showKey ? 'Hide API key' : 'Show API key'}
+                      </span>
+                    </Button>
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => openUrl(providerHelpUrls[provider])}
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs transition-colors"
+            >
+              Get {providerDisplayNames[provider]} key
+              <ExternalLink className="h-3 w-3" />
+            </button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onCancel}
+                disabled={storeApiKey.isPending}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={storeApiKey.isPending}
+                className="text-xs"
+              >
+                {storeApiKey.isPending
+                  ? 'Saving...'
+                  : hasKey
+                    ? 'Update'
+                    : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </form>
+      </Form>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CloudTab
+// ---------------------------------------------------------------------------
 
 type ProviderModels = {
   provider: string;
@@ -56,11 +204,11 @@ type ProviderModels = {
   hasKey: boolean;
 };
 
-type ModelsListProps = {
+type CloudTabProps = {
   providers: ProviderModels[];
 };
 
-export function ModelsList({ providers }: ModelsListProps) {
+export function CloudTab({ providers }: CloudTabProps) {
   const [state, setState] = useState<ProviderModels[]>(providers);
   const updateModelPreference = useUpdateModelPreference();
   const deleteApiKey = useDeleteApiKey();
@@ -74,12 +222,11 @@ export function ModelsList({ providers }: ModelsListProps) {
   // Model toggle state
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
-  // API key dialog state
-  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(
+  // Inline API key form state
+  const [editingKeyProvider, setEditingKeyProvider] = useState<string | null>(
     null
   );
-  const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = useState(false);
-  const [apiKeyDialogHasKey, setApiKeyDialogHasKey] = useState(false);
+  const [editingKeyHasKey, setEditingKeyHasKey] = useState(false);
 
   // Delete API key dialog state
   const [deleteProvider, setDeleteProvider] = useState<Provider | null>(null);
@@ -98,22 +245,24 @@ export function ModelsList({ providers }: ModelsListProps) {
   // --- Handlers ---
 
   const handleAddApiKey = useCallback((provider: Provider) => {
-    setSelectedProvider(provider);
-    setApiKeyDialogHasKey(false);
-    setIsApiKeyDialogOpen(true);
+    setEditingKeyProvider(provider);
+    setEditingKeyHasKey(false);
   }, []);
 
   const handleEditApiKey = useCallback((provider: Provider) => {
-    setSelectedProvider(provider);
-    setApiKeyDialogHasKey(true);
-    setIsApiKeyDialogOpen(true);
+    setEditingKeyProvider(provider);
+    setEditingKeyHasKey(true);
   }, []);
 
-  const handleApiKeySuccess = () => {
-    setIsApiKeyDialogOpen(false);
-    setSelectedProvider(null);
-    toast.success('API key saved!');
-  };
+  const handleApiKeySuccess = useCallback(() => {
+    setEditingKeyProvider(null);
+    setEditingKeyHasKey(false);
+  }, []);
+
+  const handleApiKeyCancel = useCallback(() => {
+    setEditingKeyProvider(null);
+    setEditingKeyHasKey(false);
+  }, []);
 
   const handleDeleteKeyClick = useCallback(
     (provider: Provider, e: React.MouseEvent) => {
@@ -225,6 +374,7 @@ export function ModelsList({ providers }: ModelsListProps) {
     () =>
       state.map((provider) => {
         const isCustom = provider.provider.startsWith('custom:');
+        const isEditingKey = editingKeyProvider === provider.provider;
 
         const displayName = isCustom
           ? (providerDisplayNames[
@@ -241,49 +391,64 @@ export function ModelsList({ providers }: ModelsListProps) {
         const totalCount = provider.models.length;
         const hasActiveModels = activeCount > 0;
 
-        // Providers without a key: show Add API Key button
+        // Providers without a key: show Add API Key button (or inline form)
         if (!provider.hasKey) {
           return (
             <div
               key={provider.provider}
-              className="bg-card border-border/60 hover:bg-accent/50 flex min-h-[68px] items-center justify-between rounded-lg border p-4 text-sm transition-colors"
+              className="bg-card border-border/60 min-h-[68px] rounded-lg border p-4 text-sm"
             >
-              <div className="flex items-center gap-3">
-                {logo}
-                <div className="flex items-center gap-2 font-medium">
-                  {displayName}
-                  {provider.provider === 'gemini' ? (
-                    <Badge
-                      variant="secondary"
-                      className="border-emerald-200 bg-emerald-100 text-[10px] font-bold tracking-wider text-emerald-700 uppercase dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
-                    >
-                      Free Tier
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="secondary"
-                      className="border-purple-200 bg-purple-100 text-[10px] font-bold tracking-wider text-purple-700 uppercase dark:border-purple-800 dark:bg-purple-900/30 dark:text-purple-400"
-                    >
-                      Paid Credits
-                    </Badge>
-                  )}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {logo}
+                  <div className="flex items-center gap-2 font-medium">
+                    {displayName}
+                    {provider.provider === 'gemini' ? (
+                      <Badge
+                        variant="secondary"
+                        className="border-emerald-200 bg-emerald-100 text-[10px] font-bold tracking-wider text-emerald-700 uppercase dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400"
+                      >
+                        Free Tier
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="secondary"
+                        className="border-purple-200 bg-purple-100 text-[10px] font-bold tracking-wider text-purple-700 uppercase dark:border-purple-800 dark:bg-purple-900/30 dark:text-purple-400"
+                      >
+                        Paid Credits
+                      </Badge>
+                    )}
+                  </div>
                 </div>
+                {!isEditingKey && (
+                  <div className="flex items-center gap-2">
+                    <div className="text-muted-foreground flex items-center gap-1 text-sm">
+                      <X className="h-4 w-4" />
+                      <span>Not added</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        handleAddApiKey(provider.provider as Provider)
+                      }
+                      className="gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add API Key
+                    </Button>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <div className="text-muted-foreground flex items-center gap-1 text-sm">
-                  <X className="h-4 w-4" />
-                  <span>Not added</span>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAddApiKey(provider.provider as Provider)}
-                  className="gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add API Key
-                </Button>
-              </div>
+
+              {isEditingKey && (
+                <ApiKeyInlineForm
+                  provider={provider.provider as Provider}
+                  hasKey={false}
+                  onSuccess={handleApiKeySuccess}
+                  onCancel={handleApiKeyCancel}
+                />
+              )}
             </div>
           );
         }
@@ -297,7 +462,7 @@ export function ModelsList({ providers }: ModelsListProps) {
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="hover:bg-accent/50 flex min-h-[68px] w-full items-center justify-between p-4 text-left transition-colors"
+                className="group hover:bg-accent/50 flex min-h-[68px] w-full items-center justify-between p-4 text-left transition-colors"
               >
                 <span className="flex items-center gap-3">
                   {logo}
@@ -345,11 +510,11 @@ export function ModelsList({ providers }: ModelsListProps) {
                       {activeCount} of {totalCount} active
                     </>
                   )}
-                  <ChevronDown className="h-4 w-4" />
+                  <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]:rotate-180" />
                 </span>
               </Button>
             </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-3 px-4 pb-4">
+            <CollapsibleContent className="space-y-3 px-4 py-4">
               {provider.models.length > 0 ? (
                 provider.models.map((model) => {
                   const toggleId = `${provider.provider}:${model.id}`;
@@ -393,34 +558,41 @@ export function ModelsList({ providers }: ModelsListProps) {
                 </div>
               )}
 
-              {/* API key actions in expanded panel */}
-              {!isCustom && (
-                <div className="border-border/40 mt-2 flex items-center justify-end gap-2 border-t pt-3">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      handleEditApiKey(provider.provider as Provider)
-                    }
-                    className="gap-1 text-xs"
-                  >
-                    Edit API Key
-                    <ChevronRight className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={(e) =>
-                      handleDeleteKeyClick(provider.provider as Provider, e)
-                    }
-                    className="text-destructive hover:text-destructive gap-1 text-xs"
-                    disabled={deleteApiKey.isPending}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                    Delete Key
-                  </Button>
-                </div>
-              )}
+              {/* Inline key editing form or action buttons */}
+              {!isCustom &&
+                (isEditingKey ? (
+                  <ApiKeyInlineForm
+                    provider={provider.provider as Provider}
+                    hasKey={editingKeyHasKey}
+                    onSuccess={handleApiKeySuccess}
+                    onCancel={handleApiKeyCancel}
+                  />
+                ) : (
+                  <div className="border-border/40 mt-2 flex items-center justify-end gap-2 border-t pt-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        handleEditApiKey(provider.provider as Provider)
+                      }
+                      className="gap-1 text-xs"
+                    >
+                      Edit API Key
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) =>
+                        handleDeleteKeyClick(provider.provider as Provider, e)
+                      }
+                      className="text-destructive hover:text-destructive gap-1 text-xs"
+                      disabled={deleteApiKey.isPending}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Delete Key
+                    </Button>
+                  </div>
+                ))}
 
               {/* Custom provider edit/delete actions */}
               {isCustom &&
@@ -437,7 +609,6 @@ export function ModelsList({ providers }: ModelsListProps) {
                         className="gap-1 text-xs"
                       >
                         Edit
-                        <ChevronRight className="h-3 w-3" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -463,9 +634,13 @@ export function ModelsList({ providers }: ModelsListProps) {
       deleteApiKey.isPending,
       deleteCustomProvider.isPending,
       pendingKey,
+      editingKeyProvider,
+      editingKeyHasKey,
       handleToggle,
       handleAddApiKey,
       handleEditApiKey,
+      handleApiKeySuccess,
+      handleApiKeyCancel,
       handleEditCustomProvider,
       handleDeleteKeyClick,
       handleDeleteCustomClick,
@@ -474,7 +649,14 @@ export function ModelsList({ providers }: ModelsListProps) {
 
   return (
     <>
-      <div className="space-y-3">
+      <div>
+        <h1 className="text-2xl font-semibold">Cloud</h1>
+        <p className="text-muted-foreground mt-2">
+          Manage API keys and enable the models you want available in chat.
+        </p>
+      </div>
+
+      <div className="mt-8 space-y-3">
         {providerCards}
 
         {/* Custom providers not yet in the modelsData list */}
@@ -483,7 +665,7 @@ export function ModelsList({ providers }: ModelsListProps) {
           .map((cp) => (
             <div
               key={cp.id}
-              className="bg-card hover:bg-accent/50 flex min-h-[68px] items-center justify-between rounded-lg border p-4 text-sm transition-colors"
+              className="bg-card hover:bg-accent/50 flex min-h-[60px] items-center justify-between rounded-lg border p-4 text-sm transition-colors"
             >
               <div className="flex items-center gap-3">
                 <Server className="size-6" />
@@ -512,7 +694,6 @@ export function ModelsList({ providers }: ModelsListProps) {
                   className="gap-1 text-xs"
                 >
                   Edit
-                  <ChevronRight className="h-3 w-3" />
                 </Button>
                 <Button
                   variant="ghost"
@@ -537,24 +718,6 @@ export function ModelsList({ providers }: ModelsListProps) {
           Add Custom Provider
         </Button>
       </div>
-
-      {/* API key dialog */}
-      {selectedProvider && (
-        <ApiKeyDialog
-          provider={selectedProvider}
-          open={isApiKeyDialogOpen}
-          onOpenChange={(open) => {
-            if (!open) {
-              setIsApiKeyDialogOpen(false);
-              setSelectedProvider(null);
-            } else {
-              setIsApiKeyDialogOpen(true);
-            }
-          }}
-          onSuccess={handleApiKeySuccess}
-          hasKey={apiKeyDialogHasKey}
-        />
-      )}
 
       {/* Custom provider dialog */}
       <CustomProviderDialog

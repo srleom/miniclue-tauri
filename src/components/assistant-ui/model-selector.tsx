@@ -96,7 +96,7 @@ export function ModelSelector({
         <SettingsDialog
           open={settingsOpen}
           onOpenChange={setSettingsOpen}
-          initialTab="providers"
+          initialTab="cloud"
         />
       </>
     );
@@ -146,7 +146,7 @@ export function ModelSelector({
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
-        initialTab="providers"
+        initialTab="cloud"
       />
     </>
   );
