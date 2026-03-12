@@ -154,7 +154,7 @@ export function SettingsDialog({
           </Sidebar>
 
           <main className="flex h-[600px] flex-1 flex-col overflow-hidden py-8 px-6">
-            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0">
+            <div className="flex flex-1 flex-col overflow-y-auto p-4 pt-0">
               {activeSection === 'local' && <LocalTab />}
 
               {activeSection === 'cloud' && (

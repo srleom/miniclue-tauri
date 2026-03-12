@@ -237,8 +237,7 @@ export function LocalTab() {
       <div>
         <h1 className="text-2xl font-semibold">Local</h1>
         <p className="text-muted-foreground mt-2">
-          Run AI fully on your device. Chat models are downloaded once and work
-          completely offline.
+          Run AI models fully on your device.
         </p>
       </div>
 
