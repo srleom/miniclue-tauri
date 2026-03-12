@@ -1,7 +1,14 @@
-import { useState, useEffect, useCallback, useRef, memo } from 'react';
+import {
+  ChevronDownIcon,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  ZoomInIcon,
+  ZoomOutIcon,
+} from 'lucide-react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { Button } from '@/components/ui/button';
-import { debounce } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,14 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  ChevronDownIcon,
-  ZoomInIcon,
-  ZoomOutIcon,
-  Loader2,
-  Maximize2,
-  Minimize2,
-} from 'lucide-react';
+import { debounce } from '@/lib/utils';
 
 // Import required stylesheets for text selection and annotations (links)
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -25,6 +25,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 // Configure PDF.js worker using Vite's ?url import for proper bundling
 // Note: pdfjs-dist is a dependency of react-pdf, so this imports the correct matching version
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 // Memoized PDF Page component to prevent unnecessary re-renders
@@ -97,6 +98,8 @@ export default function PdfViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const currentPageRef = useRef(pageNumber);
   const previousFileUrlRef = useRef(fileUrl);
+  // Track the last pageNumber prop value we received so we can detect external changes
+  const prevPageNumberPropRef = useRef(pageNumber);
 
   // Reset PDF-specific state when fileUrl changes (render-phase update)
   if (previousFileUrlRef.current !== fileUrl) {
@@ -111,6 +114,21 @@ export default function PdfViewer({
   useEffect(() => {
     currentPageRef.current = pageNumber;
   }, [pageNumber]);
+
+  // Scroll to page when pageNumber prop changes externally (e.g. citation click)
+  useEffect(() => {
+    if (!containerRef.current || !numPages) return;
+    // Skip if this is the initial render or the page hasn't actually changed
+    if (prevPageNumberPropRef.current === pageNumber) return;
+    prevPageNumberPropRef.current = pageNumber;
+
+    const pageEl = containerRef.current.querySelector(
+      `[data-page-number="${pageNumber}"]`
+    );
+    if (pageEl) {
+      pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [pageNumber, numPages]);
 
   const onDocumentLoadSuccess = useCallback(
     ({ numPages: nextNumPages }: { numPages: number }) => {
@@ -272,8 +290,10 @@ export default function PdfViewer({
     };
 
     // Use IntersectionObserver to trigger updates when any page visibility changes
+    // Debounce to avoid excessive calls when multiple pages animate in/out during streaming
+    const debouncedUpdateCurrentPage = debounce(updateCurrentPage, 50);
     const observer = new IntersectionObserver(() => {
-      updateCurrentPage();
+      debouncedUpdateCurrentPage();
     }, options);
 
     // Observe all page elements
@@ -284,9 +304,10 @@ export default function PdfViewer({
 
     // Also listen to scroll events for reliable updates
     // This ensures updates happen even when no pages enter/exit the viewport
-    const handleScroll = () => {
+    // Debounce to avoid firing on every pixel of scroll during streaming re-renders
+    const handleScroll = debounce(() => {
       updateCurrentPage();
-    };
+    }, 50);
     container.addEventListener('scroll', handleScroll);
 
     // Also run on initial mount

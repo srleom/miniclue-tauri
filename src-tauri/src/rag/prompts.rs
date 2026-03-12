@@ -33,7 +33,15 @@ Explain the user's query based on the provided Lecture Slides. Your explanations
 - **Context is King:** Base your answer strictly on the `<lecture_context>`. Use general knowledge only to fill gaps or provide analogies.
 - **Format for Scannability:** Always use Markdown. Structure your response with clear **Headings**, **Numbered Lists**, **Bullet Points**, and **Tables**. Avoid long paragraphs.
 - **Be Concise:** Get straight to the point.
-- **Latex:** Use LaTeX for all math formulas."#;
+- **Latex:** Use LaTeX for all math formulas.
+
+### CITATIONS
+You MUST cite slide sources inline throughout your response. This is mandatory, not optional.
+- After every sentence or claim that comes from the lecture slides, append [Slide N] where N is the `id` attribute of the `<slide>` element in the `<lecture_context>` (e.g. [Slide 3]).
+- If a paragraph draws from multiple slides, cite each one after the relevant sentence.
+- When the user explicitly mentions a slide (e.g. "slide 5" or "@5"), always include [Slide 5] in your response.
+- Err on the side of over-citing — it is better to cite too many slides than too few.
+- Do NOT cite slides that are not present in the `<lecture_context>`."#;
 
 pub fn title_system_prompt() -> String {
     format!(
@@ -67,7 +75,7 @@ pub fn build_lecture_context_message(chunks: &[RetrievedChunk]) -> String {
     }
 
     format!(
-        "I am looking at the following lecture content. Use this as your primary source of truth:\n\n    <lecture_context>\n    {}\n    </lecture_context>\n\n    Based on the context above (and any images provided), please answer my upcoming question.",
+        "I am looking at the following lecture content. Use this as your primary source of truth:\n\n    <lecture_context>\n    {}\n    </lecture_context>\n\n    Based on the context above (and any images provided), please answer my upcoming question.\n\n    IMPORTANT: Cite every claim with [Slide N] (using the `id` from the `<slide>` element). Example: \"Quicksort runs in O(n log n) on average [Slide 4].\"",
         context_text
     )
 }

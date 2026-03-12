@@ -267,9 +267,11 @@ async fn spawn_chat_server(
         "--port".to_string(),
         CHAT_PORT.to_string(),
         "--ctx-size".to_string(),
-        "4096".to_string(),
+        "8192".to_string(),
         "-ngl".to_string(),
         "99".to_string(),
+        "--batch-size".to_string(),
+        "512".to_string(),
     ];
 
     spawn_sidecar(app_handle, &args, instance).await

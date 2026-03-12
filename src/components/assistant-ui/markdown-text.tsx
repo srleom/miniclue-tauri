@@ -6,8 +6,8 @@ import 'katex/dist/katex.min.css';
 import {
   type CodeHeaderProps,
   MarkdownTextPrimitive,
-  type SyntaxHighlighterProps,
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
+  type SyntaxHighlighterProps,
   useIsMarkdownCodeBlock,
 } from '@assistant-ui/react-markdown';
 import { CheckIcon, CopyIcon } from 'lucide-react';
@@ -16,7 +16,9 @@ import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 
+import { SlideLink } from '@/components/assistant-ui/slide-link';
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button';
+import { remarkSlideCitations } from '@/lib/remark-slide-citations';
 import { cn } from '@/lib/utils';
 
 let mermaidInitialized = false;
@@ -40,7 +42,7 @@ const getMermaid = async () => {
 const MarkdownTextImpl = () => {
   return (
     <MarkdownTextPrimitive
-      remarkPlugins={[remarkGfm, remarkMath]}
+      remarkPlugins={[remarkGfm, remarkMath, remarkSlideCitations]}
       rehypePlugins={[rehypeKatex]}
       className="aui-md"
       components={defaultComponents}
@@ -255,15 +257,28 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  a: ({ className, ...props }) => (
-    <a
-      className={cn(
-        'aui-md-a text-primary underline underline-offset-2 hover:text-primary/80',
-        className
-      )}
-      {...props}
-    />
-  ),
+  a: ({ className, href, children, ...props }) => {
+    // Intercept slide:// links and render as SlideLink navigation buttons
+    if (href?.startsWith('slide://')) {
+      const pageStr = href.slice('slide://'.length);
+      const page = Number.parseInt(pageStr, 10);
+      if (!Number.isNaN(page) && page > 0) {
+        return <SlideLink page={page} className={className} />;
+      }
+    }
+    return (
+      <a
+        className={cn(
+          'aui-md-a text-primary underline underline-offset-2 hover:text-primary/80',
+          className
+        )}
+        href={href}
+        {...props}
+      >
+        {children}
+      </a>
+    );
+  },
   blockquote: ({ className, ...props }) => (
     <blockquote
       className={cn(

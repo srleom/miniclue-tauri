@@ -79,8 +79,39 @@ pub async fn save_embeddings(
     Ok(())
 }
 
-/// Retrieve chunks by similarity using vec0 virtual table
-/// Returns (chunk_id, text, page_number, distance)
+/// Retrieve all chunks for specific page numbers of a document.
+/// Returns (chunk_id, text, page_number) ordered by page_number, chunk_index.
+pub async fn get_chunks_for_pages(
+    db: &SqlitePool,
+    document_id: &str,
+    page_numbers: &[i32],
+) -> Result<Vec<(String, String, i64)>, SqlxError> {
+    if page_numbers.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Build a dynamic IN clause
+    let placeholders = page_numbers
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let query_str = format!(
+        "SELECT id, text, page_number FROM chunks \
+         WHERE document_id = ? AND page_number IN ({}) \
+         ORDER BY page_number, chunk_index",
+        placeholders
+    );
+
+    let mut query = sqlx::query_as::<_, (String, String, i64)>(&query_str).bind(document_id);
+    for &pn in page_numbers {
+        query = query.bind(pn);
+    }
+
+    query.fetch_all(db).await
+}
+
 pub async fn retrieve_similar_chunks(
     db: &SqlitePool,
     document_id: &str,

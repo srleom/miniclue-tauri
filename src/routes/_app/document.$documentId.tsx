@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { FileText, Loader2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ChatPanel } from '@/components/document/chat-panel';
 import DocumentHeader from '@/components/document/document-header';
@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/resizable';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import { SlideNavigationContext } from '@/lib/slide-navigation-context';
 import { getDocumentPdfPath } from '@/lib/tauri';
 import { useDocument, useFolder } from '../../hooks/use-queries';
 
@@ -29,14 +30,18 @@ export const Route = createFileRoute('/_app/document/$documentId')({
 
 function DocumentPdfContent({
   documentId,
+  currentPage,
+  onPageChange,
+  onDocumentLoad,
   onFullscreenChange,
 }: {
   documentId: string;
+  currentPage: number;
+  onPageChange: (page: number) => void;
+  onDocumentLoad: (totalPages: number) => void;
   onFullscreenChange: (isFullscreen: boolean) => void;
 }) {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [_totalPages, setTotalPages] = useState(0);
 
   useEffect(() => {
     const loadPdf = async () => {
@@ -60,8 +65,8 @@ function DocumentPdfContent({
           key={documentId}
           fileUrl={pdfUrl}
           pageNumber={currentPage}
-          onPageChange={setCurrentPage}
-          onDocumentLoad={setTotalPages}
+          onPageChange={onPageChange}
+          onDocumentLoad={onDocumentLoad}
           onFullscreenChange={onFullscreenChange}
         />
       ) : (
@@ -81,6 +86,32 @@ function DocumentPage() {
   const { data: document } = useDocument(documentId);
   const { data: folder } = useFolder(document?.folder_id ?? '');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+
+  // External navigation: set page and signal PDF viewer to scroll there.
+  // We use a ref so PdfViewer can distinguish external navigation from scroll events.
+  const externalNavigateRef = useRef(false);
+  const navigateToPage = useCallback((page: number) => {
+    externalNavigateRef.current = true;
+    setCurrentPage(page);
+  }, []);
+
+  // Stable callback for scroll-driven page changes from PdfViewer.
+  // Memoized so PdfViewer doesn't re-register scroll listeners on every render.
+  const handlePageChange = useCallback((page: number) => {
+    if (!externalNavigateRef.current) {
+      setCurrentPage(page);
+    }
+    externalNavigateRef.current = false;
+  }, []);
+
+  // Memoize context value to prevent unnecessary re-renders of all context consumers
+  // (SlideMentionInput, SlideLink) on every scroll or streaming update.
+  const slideNavContextValue = useMemo(
+    () => ({ currentPage, totalPages, navigateToPage }),
+    [currentPage, totalPages, navigateToPage]
+  );
 
   if (!document) {
     return (
@@ -91,63 +122,68 @@ function DocumentPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex h-14 shrink-0 items-center border-b">
-        <div className="flex items-center gap-2 px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator
-            orientation="vertical"
-            className="mr-2 data-[orientation=vertical]:h-4"
-          />
-          <Breadcrumb>
-            <BreadcrumbList>
-              {document.folder_id && folder && (
-                <>
-                  <BreadcrumbItem>
-                    <BreadcrumbLink asChild>
-                      <Link
-                        to="/folder/$folderId"
-                        params={{ folderId: document.folder_id }}
-                      >
-                        {folder.title}
-                      </Link>
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator />
-                </>
-              )}
-              <BreadcrumbItem>
-                <DocumentHeader
-                  documentId={documentId}
-                  documentTitle={document.title}
-                />
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
+    <SlideNavigationContext.Provider value={slideNavContextValue}>
+      <div className="flex h-full flex-col">
+        {/* Header */}
+        <div className="flex h-14 shrink-0 items-center border-b">
+          <div className="flex items-center gap-2 px-4">
+            <SidebarTrigger className="-ml-1" />
+            <Separator
+              orientation="vertical"
+              className="mr-2 data-[orientation=vertical]:h-4"
+            />
+            <Breadcrumb>
+              <BreadcrumbList>
+                {document.folder_id && folder && (
+                  <>
+                    <BreadcrumbItem>
+                      <BreadcrumbLink asChild>
+                        <Link
+                          to="/folder/$folderId"
+                          params={{ folderId: document.folder_id }}
+                        >
+                          {folder.title}
+                        </Link>
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator />
+                  </>
+                )}
+                <BreadcrumbItem>
+                  <DocumentHeader
+                    documentId={documentId}
+                    documentTitle={document.title}
+                  />
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+          </div>
+        </div>
+
+        {/* Main Content: PDF + Right Panel */}
+        <div className="flex-1 overflow-hidden">
+          <ResizablePanelGroup direction="horizontal">
+            <ResizablePanel defaultSize={isFullscreen ? 100 : 50} minSize={30}>
+              <DocumentPdfContent
+                key={documentId}
+                documentId={documentId}
+                currentPage={currentPage}
+                onPageChange={handlePageChange}
+                onDocumentLoad={setTotalPages}
+                onFullscreenChange={setIsFullscreen}
+              />
+            </ResizablePanel>
+            {!isFullscreen && (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={50} minSize={30}>
+                  <ChatPanel documentId={documentId} status={document.status} />
+                </ResizablePanel>
+              </>
+            )}
+          </ResizablePanelGroup>
         </div>
       </div>
-
-      {/* Main Content: PDF + Right Panel */}
-      <div className="flex-1 overflow-hidden">
-        <ResizablePanelGroup direction="horizontal">
-          <ResizablePanel defaultSize={isFullscreen ? 100 : 50} minSize={30}>
-            <DocumentPdfContent
-              key={documentId}
-              documentId={documentId}
-              onFullscreenChange={setIsFullscreen}
-            />
-          </ResizablePanel>
-          {!isFullscreen && (
-            <>
-              <ResizableHandle withHandle />
-              <ResizablePanel defaultSize={50} minSize={30}>
-                <ChatPanel documentId={documentId} status={document.status} />
-              </ResizablePanel>
-            </>
-          )}
-        </ResizablePanelGroup>
-      </div>
-    </div>
+    </SlideNavigationContext.Provider>
   );
 }

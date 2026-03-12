@@ -270,7 +270,8 @@ export const streamChat = async (
   chatId: string,
   message: string,
   model: string,
-  onEvent: (event: ChatStreamEvent) => void
+  onEvent: (event: ChatStreamEvent) => void,
+  citedPages?: number[]
 ): Promise<void> => {
   const channel = new Channel<GeneratedChatStreamEvent>();
   channel.onmessage = (generatedEvent) => {
@@ -283,6 +284,7 @@ export const streamChat = async (
         chat_id: chatId,
         message,
         model,
+        cited_pages: citedPages ?? null,
       },
       channel
     )

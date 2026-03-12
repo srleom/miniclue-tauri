@@ -23,46 +23,6 @@ pub struct AppState {
     pub model_manager: Arc<ModelManager>,
 }
 
-/// Delete Gemini embeddings and reset affected documents to `pending_processing`
-/// so they are re-indexed with the local 768-dim nomic-embed model.
-async fn requeue_gemini_embedded_documents(
-    db: &SqlitePool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Find all documents with Gemini embeddings
-    let rows: Vec<(String,)> =
-        sqlx::query_as("SELECT id FROM documents WHERE embedding_model = 'gemini-embedding-001'")
-            .fetch_all(db)
-            .await?;
-
-    if rows.is_empty() {
-        return Ok(());
-    }
-
-    log::info!(
-        "Re-queuing {} document(s) with Gemini embeddings for local re-indexing",
-        rows.len()
-    );
-
-    for (doc_id,) in &rows {
-        // Delete old Gemini embeddings (chunks are kept)
-        sqlx::query("DELETE FROM embeddings WHERE document_id = ? AND embedding_model = 'gemini-embedding-001'")
-            .bind(doc_id)
-            .execute(db)
-            .await?;
-
-        // Reset document status so the processing pipeline picks it up again
-        sqlx::query(
-            "UPDATE documents SET status = 'pending_processing', embeddings_complete = 0, embedding_model = NULL, updated_at = datetime('now') WHERE id = ?",
-        )
-        .bind(doc_id)
-        .execute(db)
-        .await?;
-    }
-
-    log::info!("Re-queue complete — documents will be re-indexed on next import or app restart");
-    Ok(())
-}
-
 impl AppState {
     pub async fn new(app_handle: &AppHandle) -> Result<Self, Box<dyn std::error::Error>> {
         let app_data_dir = app_handle
@@ -81,9 +41,6 @@ impl AppState {
 
         // Run migrations
         db::migrations::run(&db).await?;
-
-        // Re-queue documents that have Gemini embeddings (incompatible with local 768-dim model)
-        requeue_gemini_embedded_documents(&db).await?;
 
         // Ensure default folder exists
         db::folder::ensure_default_folder(&db)

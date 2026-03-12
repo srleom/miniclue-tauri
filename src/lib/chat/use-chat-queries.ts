@@ -174,11 +174,13 @@ export function useSendMessage(
   return useMutation({
     mutationFn: async ({
       message,
+      citedPages,
       onChunk,
       onDone,
       onTitleUpdated,
     }: {
       message: string;
+      citedPages?: number[];
       onChunk: (content: string) => void;
       onDone?: () => void;
       onTitleUpdated?: (payload: {
@@ -189,22 +191,29 @@ export function useSendMessage(
     }) => {
       let accumulatedContent = '';
 
-      await streamChat(documentId, chatId, message, model, (event) => {
-        // Stop processing events if the user cancelled
-        if (cancelledRef.current) return;
+      await streamChat(
+        documentId,
+        chatId,
+        message,
+        model,
+        (event) => {
+          // Stop processing events if the user cancelled
+          if (cancelledRef.current) return;
 
-        if (event.event === 'chunk') {
-          accumulatedContent += event.data.content;
-          onChunk(accumulatedContent);
-        } else if (event.event === 'done') {
-          // Backend has saved the assistant message
-          onDone?.();
-        } else if (event.event === 'title_updated') {
-          onTitleUpdated?.(event.data);
-        } else if (event.event === 'error') {
-          throw new Error(event.data.error);
-        }
-      });
+          if (event.event === 'chunk') {
+            accumulatedContent += event.data.content;
+            onChunk(accumulatedContent);
+          } else if (event.event === 'done') {
+            // Backend has saved the assistant message
+            onDone?.();
+          } else if (event.event === 'title_updated') {
+            onTitleUpdated?.(event.data);
+          } else if (event.event === 'error') {
+            throw new Error(event.data.error);
+          }
+        },
+        citedPages
+      );
 
       return accumulatedContent;
     },

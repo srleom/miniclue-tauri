@@ -20,6 +20,7 @@ import {
 import type { FC } from 'react';
 import { MarkdownText } from '@/components/assistant-ui/markdown-text';
 import { ModelSelector } from '@/components/assistant-ui/model-selector';
+import { SlideMentionInput } from '@/components/assistant-ui/slide-mention-input';
 import { ToolFallback } from '@/components/assistant-ui/tool-fallback';
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button';
 import { Button } from '@/components/ui/button';
@@ -104,8 +105,8 @@ const Composer: FC<{
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
       <ComposerPrimitive.AttachmentDropzone className="aui-composer-attachment-dropzone flex w-full flex-col rounded-2xl border border-input bg-background px-1 pt-2 outline-none transition-shadow has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50">
-        <ComposerPrimitive.Input
-          placeholder="Send a message..."
+        <SlideMentionInput
+          placeholder="Send a message... (type @ to cite slides)"
           className="aui-composer-input mb-1 max-h-32 min-h-14 w-full resize-none bg-transparent px-4 pt-2 pb-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-0"
           rows={1}
           autoFocus

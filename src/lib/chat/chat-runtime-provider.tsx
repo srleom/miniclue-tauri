@@ -7,6 +7,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { useSlideNavigation } from '@/lib/slide-navigation-context';
 import { getChat } from '@/lib/tauri';
 import type { Chat } from '@/lib/types';
 import { chatKeys, useChatMessages, useSendMessage } from './use-chat-queries';
@@ -16,6 +17,43 @@ interface ChatRuntimeProviderProps {
   chatId: string;
   model: string;
   children: ReactNode;
+}
+
+/**
+ * Parse @-mention slide references from the user's message text.
+ *
+ * Supports:
+ *   @currentSlide  → resolves to currentPage
+ *   @N             → literal page number N
+ *
+ * Returns { cleanedText, citedPages } where cleanedText has the @-tokens
+ * preserved verbatim (so the user sees what they typed in their bubble) but
+ * citedPages is a deduplicated array of page numbers to force-include in RAG.
+ */
+function parseSlideMentions(
+  text: string,
+  currentPage: number
+): { citedPages: number[] } {
+  const cited = new Set<number>();
+
+  // Match @currentSlide or @<number>
+  const mentionRegex = /@(currentSlide|\d+)/g;
+  let match: RegExpExecArray | null;
+
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex loop pattern
+  while ((match = mentionRegex.exec(text)) !== null) {
+    const token = match[1];
+    if (token === 'currentSlide') {
+      cited.add(currentPage);
+    } else {
+      const pageNum = Number.parseInt(token, 10);
+      if (!Number.isNaN(pageNum) && pageNum > 0) {
+        cited.add(pageNum);
+      }
+    }
+  }
+
+  return { citedPages: Array.from(cited) };
 }
 
 /**
@@ -43,6 +81,7 @@ export function ChatRuntimeProvider({
   const cancelledRef = useRef(false);
 
   const queryClient = useQueryClient();
+  const { currentPage } = useSlideNavigation();
 
   // Fetch messages from backend (already converted to ThreadMessageLike)
   const { data: backendMessages = [] } = useChatMessages(documentId, chatId);
@@ -154,6 +193,9 @@ export function ChatRuntimeProvider({
 
       const input = message.content[0].text;
 
+      // Parse @-mention slide references before sending
+      const { citedPages } = parseSlideMentions(input, currentPage);
+
       // Reset cancellation flag for the new request.
       // If a prior stream was cancelled, also flush any stale optimistic messages
       // so the real persisted history (including any partial saved by the backend)
@@ -193,6 +235,7 @@ export function ChatRuntimeProvider({
         // Stream the response with event handling
         await sendMessageMutation.mutateAsync({
           message: input,
+          citedPages: citedPages.length > 0 ? citedPages : undefined,
           onChunk: (accumulatedContent) => {
             // Update the assistant message with accumulated content
             setOptimisticMessages((prev) =>
@@ -207,8 +250,12 @@ export function ChatRuntimeProvider({
             );
           },
           onDone: () => {
-            // Backend has saved both messages - safe to clear optimistic state
-            // Invalidate and refetch to show real messages from backend
+            // Clear optimistic messages FIRST to prevent duplicate display.
+            // The query invalidation below triggers an async refetch; if we
+            // cleared after invalidation, backendMessages could briefly contain
+            // the real messages while optimisticMessages still held the temp ones.
+            setOptimisticMessages([]);
+            // Backend has saved both messages - refetch to show real messages
             queryClient.invalidateQueries({
               queryKey: chatKeys.messages(documentId, chatId),
             });
@@ -222,7 +269,6 @@ export function ChatRuntimeProvider({
             });
             // Fallback polling to catch delayed async title generation.
             void refreshGeneratedTitle();
-            setOptimisticMessages([]);
           },
           onTitleUpdated: (payload) => {
             applyTitleUpdate(payload);
@@ -241,6 +287,7 @@ export function ChatRuntimeProvider({
       queryClient,
       documentId,
       chatId,
+      currentPage,
       refreshGeneratedTitle,
       applyTitleUpdate,
     ]

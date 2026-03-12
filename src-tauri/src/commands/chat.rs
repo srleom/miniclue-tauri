@@ -139,6 +139,9 @@ pub struct StreamChatRequest {
     pub chat_id: String,
     pub message: String, // User's message text
     pub model: String,   // Selected model
+    /// Pages explicitly cited by the user (e.g. via @5 or @currentSlide).
+    /// These pages are force-included in the RAG context regardless of semantic similarity.
+    pub cited_pages: Option<Vec<i32>>,
 }
 
 /// Resolved credentials for a given model string.
@@ -372,16 +375,54 @@ pub async fn stream_chat(
         }
     };
 
-    let rag_fut = rag::retrieve_chunks(&user_message, &document_id, &db, 5);
+    let rag_fut = rag::retrieve_chunks(&user_message, &document_id, &db, 3);
 
     let (rewritten_query, chunks) = tokio::join!(rewrite_fut, rag_fut);
-    let chunks = chunks.unwrap_or_else(|e| {
+    let mut chunks = chunks.unwrap_or_else(|e| {
         log::warn!("RAG retrieval failed: {}, using empty chunks", e);
         vec![]
     });
 
+    // Force-include chunks from explicitly cited pages (user's @slide references).
+    // These are prepended so they appear first in the LLM context, then deduplicated
+    // to avoid repeating the same chunk from semantic retrieval.
+    if let Some(cited_pages) = &request.cited_pages {
+        if !cited_pages.is_empty() {
+            match db::embedding::get_chunks_for_pages(&db, &document_id, cited_pages).await {
+                Ok(cited_rows) => {
+                    let mut cited_chunks: Vec<rag::retriever::RetrievedChunk> = cited_rows
+                        .into_iter()
+                        .map(
+                            |(chunk_id, text, page_number)| rag::retriever::RetrievedChunk {
+                                chunk_id,
+                                text,
+                                page_number,
+                                distance: 0.0, // Cited pages are treated as most relevant
+                            },
+                        )
+                        .collect();
+
+                    // Deduplicate: remove from semantic results any chunks already in cited_chunks
+                    let cited_ids: std::collections::HashSet<&str> =
+                        cited_chunks.iter().map(|c| c.chunk_id.as_str()).collect();
+                    chunks.retain(|c| !cited_ids.contains(c.chunk_id.as_str()));
+
+                    // Prepend cited chunks so the LLM sees them first
+                    cited_chunks.extend(chunks);
+                    chunks = cited_chunks;
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to fetch cited page chunks: {}, ignoring citation",
+                        e
+                    );
+                }
+            }
+        }
+    }
+
     // 5. Build RAG context (rewritten query used as the final user message for the LLM)
-    let rag_messages = rag::build_rag_context(&chunks, &history, &rewritten_query, 5);
+    let rag_messages = rag::build_rag_context(&chunks, &history, &rewritten_query, 3);
 
     // 6. Stream from LLM
     let mut stream = llm::stream_chat(

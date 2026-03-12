@@ -9,6 +9,7 @@
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -72,6 +73,20 @@ fn embed_url() -> String {
     format!("http://127.0.0.1:{EMBED_PORT}/v1/embeddings")
 }
 
+/// Shared HTTP client for all embed requests.
+/// Reusing a single client avoids rebuilding the TLS stack and connection pool
+/// on every query, which was a measurable source of per-request latency.
+static EMBED_CLIENT: OnceLock<Client> = OnceLock::new();
+
+fn embed_client() -> &'static Client {
+    EMBED_CLIENT.get_or_init(|| {
+        Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .expect("failed to build embed HTTP client")
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -87,10 +102,7 @@ pub async fn generate_embeddings(
         return Ok(Vec::new());
     }
 
-    let client = Client::builder()
-        .timeout(Duration::from_secs(120))
-        .build()
-        .map_err(|e| EmbedderError::NetworkError(e.to_string()))?;
+    let client = embed_client();
 
     log::info!(
         "Generating local embeddings for {} chunks (batches of {BATCH_SIZE})",
@@ -105,7 +117,7 @@ pub async fn generate_embeddings(
             .map(|(_, text, _)| format!("search_document: {text}"))
             .collect();
 
-        let vectors = embed_batch(&client, inputs).await?;
+        let vectors = embed_batch(client, inputs).await?;
 
         if vectors.len() != batch.len() {
             return Err(EmbedderError::ApiError(format!(
@@ -132,13 +144,9 @@ pub async fn generate_embeddings(
 ///
 /// Adds the `"search_query: "` prefix required by nomic-embed-text-v1.5.
 pub async fn generate_query_embedding(query: &str) -> Result<Vec<f32>, EmbedderError> {
-    let client = Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .map_err(|e| EmbedderError::NetworkError(e.to_string()))?;
-
+    let client = embed_client();
     let input = format!("search_query: {query}");
-    let mut vectors = embed_batch(&client, vec![input]).await?;
+    let mut vectors = embed_batch(client, vec![input]).await?;
 
     vectors
         .pop()
