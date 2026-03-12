@@ -139,6 +139,9 @@ pub struct StreamChatRequest {
     pub chat_id: String,
     pub message: String, // User's message text
     pub model: String,   // Selected model
+    /// Whether the selected model supports vision (image inputs).
+    /// Determined by the frontend from `model-catalog.ts` — that file is the source of truth.
+    pub model_supports_vision: bool,
     /// Pages explicitly cited by the user (e.g. via @5 or @currentPage).
     /// These pages are force-included in the RAG context regardless of semantic similarity.
     pub cited_pages: Option<Vec<i32>>,
@@ -362,9 +365,8 @@ pub async fn stream_chat(
 
     let history: Vec<rag::query_rewriter::Message> = messages
         .iter()
-        .map(|m| rag::query_rewriter::Message {
-            role: m.role.clone(),
-            content: extract_first_text_from_parts(&m.parts),
+        .map(|m| {
+            rag::query_rewriter::Message::text(&m.role, &extract_first_text_from_parts(&m.parts))
         })
         .collect();
 
@@ -475,8 +477,53 @@ pub async fn stream_chat(
         }
     }
 
+    // Vision enhancement: replace cited-page text chunks with screenshots when the
+    // model supports image inputs. Screenshots provide full visual context (tables,
+    // figures, layout) that plain text extraction cannot capture.
+    let mut cited_screenshots: Vec<rag::context_builder::CitedPageScreenshot> = Vec::new();
+    if request.model_supports_vision {
+        if let Some(cited_pages) = &request.cited_pages {
+            if !cited_pages.is_empty() {
+                match db::embedding::get_screenshot_paths_for_pages(&db, &document_id, cited_pages)
+                    .await
+                {
+                    Ok(screenshot_rows) => {
+                        let mut screenshot_page_numbers = std::collections::HashSet::<i64>::new();
+
+                        for (page_number, screenshot_path) in &screenshot_rows {
+                            if let Some(data_uri) =
+                                rag::context_builder::load_screenshot_as_data_uri(
+                                    &state.app_data_dir,
+                                    screenshot_path,
+                                )
+                            {
+                                screenshot_page_numbers.insert(*page_number);
+                                cited_screenshots.push(rag::context_builder::CitedPageScreenshot {
+                                    page_number: *page_number as i32,
+                                    data_uri,
+                                });
+                            }
+                        }
+
+                        // Remove text chunks for pages replaced by screenshots
+                        if !screenshot_page_numbers.is_empty() {
+                            chunks.retain(|c| !screenshot_page_numbers.contains(&c.page_number));
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "Failed to fetch screenshot paths: {}, falling back to text chunks",
+                            e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     // 5. Build RAG context (rewritten query used as the final user message for the LLM)
-    let rag_messages = rag::build_rag_context(&chunks, &history, &rewritten_query, 3);
+    let rag_messages =
+        rag::build_rag_context(&chunks, &history, &rewritten_query, 3, &cited_screenshots);
 
     // 6. Stream from LLM
     let mut stream = llm::stream_chat(
@@ -593,14 +640,8 @@ async fn generate_chat_title(
 
     // Build messages for title generation in legacy format: [system, user]
     let title_messages = vec![
-        rag::query_rewriter::Message {
-            role: "system".to_string(),
-            content: rag::prompts::title_system_prompt(),
-        },
-        rag::query_rewriter::Message {
-            role: "user".to_string(),
-            content: title_context,
-        },
+        rag::query_rewriter::Message::text("system", &rag::prompts::title_system_prompt()),
+        rag::query_rewriter::Message::text("user", &title_context),
     ];
 
     // Generate title

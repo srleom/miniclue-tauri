@@ -179,6 +179,23 @@ export function TiptapPageMentionInput({
     totalPagesRef.current = totalPages;
   }, [currentPage, totalPages]);
 
+  // Tracks the active query string while the suggestion popup is open
+  const queryRef = useRef('');
+  // Tracks showSuggestions without making it a reactive dependency
+  const showSuggestionsRef = useRef(showSuggestions);
+  useEffect(() => {
+    showSuggestionsRef.current = showSuggestions;
+  }, [showSuggestions]);
+
+  // When the PDF is scrolled while the dropdown is open, rebuild suggestion
+  // items so "Current Page (N)" stays in sync with the visible page.
+  useEffect(() => {
+    if (!showSuggestionsRef.current) return;
+    const items = buildSuggestions(queryRef.current, currentPage, totalPages);
+    setSuggestionItems(items);
+    setSelectedIndex((prev) => Math.min(prev, Math.max(0, items.length - 1)));
+  }, [currentPage, totalPages]);
+
   // Placeholder ref so it can be used in useMemo without being a dep
   const placeholderRef = useRef(
     placeholder ?? 'Send a message... (type @ to cite pages)'
@@ -262,6 +279,7 @@ export function TiptapPageMentionInput({
             onStart: (
               props: import('@tiptap/suggestion').SuggestionProps<SuggestionItem>
             ) => {
+              queryRef.current = props.query ?? '';
               commandRef.current = (attrs) => props.command(attrs);
               const items = props.items as SuggestionItem[];
               setSuggestionsRef.current(items);
@@ -280,6 +298,7 @@ export function TiptapPageMentionInput({
             onUpdate: (
               props: import('@tiptap/suggestion').SuggestionProps<SuggestionItem>
             ) => {
+              queryRef.current = props.query ?? '';
               commandRef.current = (attrs) => props.command(attrs);
               const items = props.items as SuggestionItem[];
               setSuggestionsRef.current(items);
@@ -289,6 +308,7 @@ export function TiptapPageMentionInput({
               );
             },
             onExit: () => {
+              queryRef.current = '';
               commandRef.current = null;
               keyDownRef.current = null;
               setShowRef.current(false);

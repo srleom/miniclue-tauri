@@ -112,6 +112,39 @@ pub async fn get_chunks_for_pages(
     query.fetch_all(db).await
 }
 
+/// Retrieve screenshot paths for specific page numbers of a document.
+/// Returns `(page_number, screenshot_path)` pairs where `screenshot_path` is non-null,
+/// ordered by page_number.
+pub async fn get_screenshot_paths_for_pages(
+    db: &SqlitePool,
+    document_id: &str,
+    page_numbers: &[i32],
+) -> Result<Vec<(i64, String)>, SqlxError> {
+    if page_numbers.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let placeholders = page_numbers
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let query_str = format!(
+        "SELECT page_number, screenshot_path FROM pages \
+         WHERE document_id = ? AND page_number IN ({}) AND screenshot_path IS NOT NULL \
+         ORDER BY page_number",
+        placeholders
+    );
+
+    let mut query = sqlx::query_as::<_, (i64, String)>(&query_str).bind(document_id);
+    for &pn in page_numbers {
+        query = query.bind(pn);
+    }
+
+    query.fetch_all(db).await
+}
+
 pub async fn retrieve_similar_chunks(
     db: &SqlitePool,
     document_id: &str,

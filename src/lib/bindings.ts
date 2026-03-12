@@ -476,6 +476,11 @@ export type RecentDocument = { document_id: string; folder_id: string; title: st
 export type RecentDocumentsResponse = { documents: RecentDocument[]; total_count: number }
 export type StreamChatRequest = { document_id: string; chat_id: string; message: string; model: string; 
 /**
+ * Whether the selected model supports vision (image inputs).
+ * Determined by the frontend from `model-catalog.ts` — that file is the source of truth.
+ */
+model_supports_vision: boolean; 
+/**
  * Pages explicitly cited by the user (e.g. via @5 or @currentPage).
  * These pages are force-included in the RAG context regardless of semantic similarity.
  */

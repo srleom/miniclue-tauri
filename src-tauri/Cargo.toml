@@ -51,6 +51,8 @@ pdfium-render = "0.8"
 tiktoken-rs = "0.6"
 # Async utilities
 async-stream = "0.3"
+# Base64 encoding for image data URIs
+base64 = "0.22"
 # Hardware detection
 sysinfo = { version = "0.33", default-features = false, features = ["system", "disk"] }
 wgpu = { version = "22", default-features = false, features = ["wgsl"] }
