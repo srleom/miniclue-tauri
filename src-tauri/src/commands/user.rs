@@ -1,5 +1,6 @@
 use tauri::State;
 
+use crate::catalog::{DEFAULT_MODELS, MODEL_CATALOG};
 use crate::config::CustomProvider;
 use crate::db;
 use crate::error::ApiError;
@@ -11,58 +12,8 @@ use crate::services::model_manager::get_bundled_model_name;
 use crate::services::validators::ApiKeyValidator;
 use crate::state::AppState;
 
-// Model catalog (ported from Go backend)
+// Display order for standard providers
 const PROVIDER_ORDER: &[&str] = &["openai", "gemini", "anthropic", "xai", "deepseek"];
-
-lazy_static::lazy_static! {
-    static ref MODEL_CATALOG: std::collections::HashMap<&'static str, Vec<(&'static str, &'static str)>> = {
-        let mut m = std::collections::HashMap::new();
-        m.insert("openai", vec![
-            ("gpt-5.2", "GPT-5.2"),
-            ("gpt-5.1", "GPT-5.1"),
-            ("gpt-5.1-chat-latest", "GPT-5.1 chat latest"),
-            ("gpt-5", "GPT-5"),
-            ("gpt-5-chat-latest", "GPT-5 chat latest"),
-            ("gpt-5-mini", "GPT-5 mini"),
-            ("gpt-5-nano", "GPT-5 nano"),
-            ("gpt-4.1", "GPT-4.1"),
-            ("gpt-4.1-mini", "GPT-4.1 mini"),
-            ("gpt-4.1-nano", "GPT-4.1 nano"),
-            ("gpt-4o", "GPT-4o"),
-            ("gpt-4o-mini", "GPT-4o mini"),
-        ]);
-        m.insert("gemini", vec![
-            ("gemini-3-pro-preview", "Gemini 3 Pro Preview"),
-            ("gemini-3-flash-preview", "Gemini 3 Flash Preview"),
-            ("gemini-2.5-pro", "Gemini 2.5 Pro"),
-            ("gemini-2.5-flash", "Gemini 2.5 Flash"),
-            ("gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite"),
-        ]);
-        m.insert("anthropic", vec![
-            ("claude-sonnet-4-5", "Claude Sonnet 4.5"),
-            ("claude-haiku-4-5", "Claude Haiku 4.5"),
-        ]);
-        m.insert("xai", vec![
-            ("grok-4-1-fast-reasoning", "Grok 4.1 Fast (Reasoning)"),
-            ("grok-4-1-fast-non-reasoning", "Grok 4.1 Fast (Non-reasoning)"),
-        ]);
-        m.insert("deepseek", vec![
-            ("deepseek-chat", "DeepSeek-V3.2 (Non-thinking Mode)"),
-            ("deepseek-reasoner", "DeepSeek-V3.2 (Thinking Mode)"),
-        ]);
-        m
-    };
-
-    static ref DEFAULT_MODELS: std::collections::HashMap<&'static str, Vec<&'static str>> = {
-        let mut m = std::collections::HashMap::new();
-        m.insert("openai", vec!["gpt-4.1", "gpt-4.1-mini"]);
-        m.insert("gemini", vec!["gemini-2.5-flash", "gemini-3-flash-preview", "gemini-3-pro-preview"]);
-        m.insert("anthropic", vec!["claude-sonnet-4-5", "claude-haiku-4-5"]);
-        m.insert("xai", vec!["grok-4-1-fast-reasoning", "grok-4-1-fast-non-reasoning"]);
-        m.insert("deepseek", vec!["deepseek-chat", "deepseek-reasoner"]);
-        m
-    };
-}
 
 #[tauri::command]
 #[specta::specta]
@@ -237,12 +188,13 @@ pub async fn list_models(state: State<'_, AppState>) -> Result<ModelsResponse, A
         if let Some(models) = MODEL_CATALOG.get(provider) {
             let toggles: Vec<ModelToggle> = models
                 .iter()
-                .map(|(id, name)| {
+                .map(|(id, name, vision)| {
                     let enabled = config.get_model_preference(provider, id);
                     ModelToggle {
                         id: id.to_string(),
                         name: name.to_string(),
                         enabled,
+                        vision: *vision,
                     }
                 })
                 .collect();
@@ -262,6 +214,7 @@ pub async fn list_models(state: State<'_, AppState>) -> Result<ModelsResponse, A
                 id: format!("custom:{}", cp.id),
                 name: cp.name.clone(),
                 enabled: true,
+                vision: false,
             }],
         });
     }
@@ -295,6 +248,7 @@ pub async fn list_models(state: State<'_, AppState>) -> Result<ModelsResponse, A
                     id: format!("local:{}", model_id),
                     name,
                     enabled: true,
+                    vision: false,
                 }
             })
             .collect();
@@ -329,10 +283,10 @@ pub async fn update_model_preference(
         .get(provider.as_str())
         .ok_or_else(|| ApiError::invalid_input(format!("Unsupported provider: {}", provider)))?;
 
-    let model_name = catalog_models
+    let (model_name, model_vision) = catalog_models
         .iter()
-        .find(|(id, _)| *id == model)
-        .map(|(_, name)| *name)
+        .find(|(id, _, _)| *id == model)
+        .map(|(_, name, vision)| (*name, *vision))
         .ok_or_else(|| {
             ApiError::invalid_input(format!(
                 "Unsupported model for provider {}: {}",
@@ -351,6 +305,7 @@ pub async fn update_model_preference(
         id: model,
         name: model_name.to_string(),
         enabled,
+        vision: model_vision,
     })
 }
 

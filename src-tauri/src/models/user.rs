@@ -40,6 +40,7 @@ pub struct ModelToggle {
     pub id: String,
     pub name: String,
     pub enabled: bool,
+    pub vision: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

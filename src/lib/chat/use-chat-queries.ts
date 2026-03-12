@@ -9,7 +9,6 @@ import {
   streamChat,
   updateChat,
 } from '@/lib/tauri';
-import { MODEL_CATALOG } from '@/lib/model-catalog';
 import type {
   Chat,
   ChatCreate,
@@ -192,8 +191,6 @@ export function useSendMessage(
     }) => {
       let accumulatedContent = '';
 
-      const modelSupportsVision = MODEL_CATALOG[model]?.vision ?? false;
-
       await streamChat(
         documentId,
         chatId,
@@ -215,7 +212,6 @@ export function useSendMessage(
             throw new Error(event.data.error);
           }
         },
-        modelSupportsVision,
         citedPages
       );
 
@@ -234,6 +230,7 @@ export type StreamChatOptions = {
   message: string;
   model: string;
   onEvent: (event: ChatStreamEvent) => void;
+  citedPages?: number[];
 };
 
 /**
@@ -242,13 +239,12 @@ export type StreamChatOptions = {
 export async function streamChatWithEvents(
   options: StreamChatOptions
 ): Promise<void> {
-  const modelSupportsVision = MODEL_CATALOG[options.model]?.vision ?? false;
   await streamChat(
     options.documentId,
     options.chatId,
     options.message,
     options.model,
     options.onEvent,
-    modelSupportsVision
+    options.citedPages
   );
 }

@@ -469,17 +469,12 @@ export type ModelEntry = { id: string; name: string; description: string;
  * File size in bytes (as f64 for TypeScript compatibility)
  */
 sizeBytes: number; sha256: string | null; hfRepo: string; hfFilename: string; minRamGb: number; isDefault: boolean; supersededBy: string | null; tags: string[] }
-export type ModelToggle = { id: string; name: string; enabled: boolean }
+export type ModelToggle = { id: string; name: string; enabled: boolean; vision: boolean }
 export type ModelsResponse = { providers: ProviderModels[] }
 export type ProviderModels = { provider: string; models: ModelToggle[] }
 export type RecentDocument = { document_id: string; folder_id: string; title: string }
 export type RecentDocumentsResponse = { documents: RecentDocument[]; total_count: number }
 export type StreamChatRequest = { document_id: string; chat_id: string; message: string; model: string; 
-/**
- * Whether the selected model supports vision (image inputs).
- * Determined by the frontend from `model-catalog.ts` — that file is the source of truth.
- */
-model_supports_vision: boolean; 
 /**
  * Pages explicitly cited by the user (e.g. via @5 or @currentPage).
  * These pages are force-included in the RAG context regardless of semantic similarity.

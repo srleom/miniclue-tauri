@@ -1,4 +1,5 @@
 mod bindings;
+mod catalog;
 mod commands;
 mod config;
 mod db;

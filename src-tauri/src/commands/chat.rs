@@ -139,9 +139,6 @@ pub struct StreamChatRequest {
     pub chat_id: String,
     pub message: String, // User's message text
     pub model: String,   // Selected model
-    /// Whether the selected model supports vision (image inputs).
-    /// Determined by the frontend from `model-catalog.ts` — that file is the source of truth.
-    pub model_supports_vision: bool,
     /// Pages explicitly cited by the user (e.g. via @5 or @currentPage).
     /// These pages are force-included in the RAG context regardless of semantic similarity.
     pub cited_pages: Option<Vec<i32>>,
@@ -260,7 +257,7 @@ fn get_aux_model_credentials(model: &str, config: &AppConfig) -> Option<ModelCre
     } else if model.starts_with("claude") {
         ("claude-haiku-4-5", "anthropic")
     } else if model.starts_with("gemini") || model.starts_with("models/gemini") {
-        ("gemini-3.1-flash-lite-preview", "gemini")
+        ("gemini-3.1-flash-lite-preview", "gemini") // lightest Gemini model
     } else if model.starts_with("grok") {
         ("grok-4-1-fast-non-reasoning", "xai")
     } else if model.starts_with("deepseek") {
@@ -481,7 +478,7 @@ pub async fn stream_chat(
     // model supports image inputs. Screenshots provide full visual context (tables,
     // figures, layout) that plain text extraction cannot capture.
     let mut cited_screenshots: Vec<rag::context_builder::CitedPageScreenshot> = Vec::new();
-    if request.model_supports_vision {
+    if crate::catalog::model_supports_vision(&request.model) {
         if let Some(cited_pages) = &request.cited_pages {
             if !cited_pages.is_empty() {
                 match db::embedding::get_screenshot_paths_for_pages(&db, &document_id, cited_pages)
