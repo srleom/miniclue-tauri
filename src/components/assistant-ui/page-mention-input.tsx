@@ -73,7 +73,7 @@ function buildSuggestions(
 
   // --- @currentPage ---
   const currentPageItem: SuggestionItem = {
-    label: '@currentPage',
+    label: '@Current Page',
     value: '@currentPage',
     description: `Current page (${currentPage})`,
   };
@@ -92,7 +92,7 @@ function buildSuggestions(
     // Show all pages when query is empty
     for (let i = 1; i <= maxPage; i++) {
       items.push({
-        label: `@${i}`,
+        label: `@Page ${i}`,
         value: `@${i}`,
         description: `Page ${i}`,
       });
@@ -104,7 +104,7 @@ function buildSuggestions(
 
     if (hasExact) {
       items.push({
-        label: `@${exact}`,
+        label: `@Page ${exact}`,
         value: `@${exact}`,
         description: `Page ${exact}`,
       });
@@ -116,7 +116,7 @@ function buildSuggestions(
       if (i === exact) continue; // already added above
       if (String(i).startsWith(q)) {
         items.push({
-          label: `@${i}`,
+          label: `@Page ${i}`,
           value: `@${i}`,
           description: `Page ${i}`,
         });
@@ -166,12 +166,14 @@ export function PageMentionInput({
       const currentText = composerRuntime.getState().text;
       const before = currentText.slice(0, atIndex);
       const after = currentText.slice(atIndex + 1 + mentionQuery.length);
-      const newText = `${before}${item.value} ${after}`;
+      const resolvedValue =
+        item.value === '@currentPage' ? `@${currentPage}` : item.value;
+      const newText = `${before}${resolvedValue} ${after}`;
 
       composerRuntime.setText(newText);
 
       // Move cursor to after the inserted mention + space
-      const newCursorPos = atIndex + item.value.length + 1;
+      const newCursorPos = atIndex + resolvedValue.length + 1;
       setTimeout(() => {
         textarea.focus();
         textarea.setSelectionRange(newCursorPos, newCursorPos);
@@ -181,7 +183,7 @@ export function PageMentionInput({
       setMentionQuery('');
       setAtIndex(null);
     },
-    [atIndex, mentionQuery, composerRuntime]
+    [atIndex, mentionQuery, composerRuntime, currentPage]
   );
 
   // Handle keyboard navigation inside the suggestion popup (capture phase so

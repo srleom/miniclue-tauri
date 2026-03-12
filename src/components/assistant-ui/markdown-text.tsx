@@ -12,6 +12,7 @@ import {
 } from '@assistant-ui/react-markdown';
 import { CheckIcon, CopyIcon } from 'lucide-react';
 import { type FC, memo, useEffect, useId, useRef, useState } from 'react';
+import { defaultUrlTransform } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -44,6 +45,9 @@ const MarkdownTextImpl = () => {
     <MarkdownTextPrimitive
       remarkPlugins={[remarkGfm, remarkMath, remarkPageCitations]}
       rehypePlugins={[rehypeKatex]}
+      urlTransform={(url) =>
+        url.startsWith('page://') ? url : defaultUrlTransform(url)
+      }
       className="aui-md"
       components={defaultComponents}
       componentsByLanguage={{

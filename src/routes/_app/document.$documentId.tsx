@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { FileText, Loader2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { ChatPanel } from '@/components/document/chat-panel';
 import DocumentHeader from '@/components/document/document-header';
@@ -89,21 +89,14 @@ function DocumentPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
 
-  // External navigation: set page and signal PDF viewer to scroll there.
-  // We use a ref so PdfViewer can distinguish external navigation from scroll events.
-  const externalNavigateRef = useRef(false);
   const navigateToPage = useCallback((page: number) => {
-    externalNavigateRef.current = true;
     setCurrentPage(page);
   }, []);
 
-  // Stable callback for scroll-driven page changes from PdfViewer.
-  // Memoized so PdfViewer doesn't re-register scroll listeners on every render.
+  // Stable callback for page updates from PdfViewer.
+  // Includes both manual scrolling and smooth citation navigation updates.
   const handlePageChange = useCallback((page: number) => {
-    if (!externalNavigateRef.current) {
-      setCurrentPage(page);
-    }
-    externalNavigateRef.current = false;
+    setCurrentPage(page);
   }, []);
 
   // Memoize context value to prevent unnecessary re-renders of all context consumers

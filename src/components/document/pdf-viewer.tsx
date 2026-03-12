@@ -279,6 +279,7 @@ export default function PdfViewer({
       // Only update if the page actually changed
       if (currentPage !== currentPageRef.current) {
         currentPageRef.current = currentPage;
+        prevPageNumberPropRef.current = currentPage; // Prevent scrollIntoView feedback loop
         onPageChange(currentPage);
       }
     };
