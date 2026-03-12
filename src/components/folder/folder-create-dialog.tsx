@@ -29,7 +29,7 @@ export function FolderCreateDialog({
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!title.trim()) {
-      toast.error('Please enter a course title');
+      toast.error('Please enter a folder title');
       return;
     }
 
@@ -38,12 +38,12 @@ export function FolderCreateDialog({
         title: title.trim(),
         description: description.trim() || undefined,
       });
-      toast.success('Course created successfully');
+      toast.success('Folder created successfully');
       setTitle('');
       setDescription('');
       onOpenChange(false);
     } catch {
-      toast.error('Failed to create course');
+      toast.error('Failed to create folder');
     }
   };
 
@@ -59,19 +59,19 @@ export function FolderCreateDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create Course</DialogTitle>
+          <DialogTitle>Create Folder</DialogTitle>
           <DialogDescription>
-            Add a new course to organize your lectures
+            Add a new folder to organize your documents
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="course-title">Title</Label>
+            <Label htmlFor="folder-title">Title</Label>
             <Input
-              id="course-title"
+              id="folder-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter course title"
+              placeholder="Enter folder title"
               disabled={createFolder.isPending}
               autoFocus
             />

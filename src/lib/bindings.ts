@@ -476,7 +476,7 @@ export type RecentDocument = { document_id: string; folder_id: string; title: st
 export type RecentDocumentsResponse = { documents: RecentDocument[]; total_count: number }
 export type StreamChatRequest = { document_id: string; chat_id: string; message: string; model: string; 
 /**
- * Pages explicitly cited by the user (e.g. via @5 or @currentSlide).
+ * Pages explicitly cited by the user (e.g. via @5 or @currentPage).
  * These pages are force-included in the RAG context regardless of semantic similarity.
  */
 cited_pages: number[] | null }

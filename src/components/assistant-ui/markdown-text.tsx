@@ -16,9 +16,9 @@ import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 
-import { SlideLink } from '@/components/assistant-ui/slide-link';
+import { PageLink } from '@/components/assistant-ui/page-link';
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button';
-import { remarkSlideCitations } from '@/lib/remark-slide-citations';
+import { remarkPageCitations } from '@/lib/remark-page-citations';
 import { cn } from '@/lib/utils';
 
 let mermaidInitialized = false;
@@ -42,7 +42,7 @@ const getMermaid = async () => {
 const MarkdownTextImpl = () => {
   return (
     <MarkdownTextPrimitive
-      remarkPlugins={[remarkGfm, remarkMath, remarkSlideCitations]}
+      remarkPlugins={[remarkGfm, remarkMath, remarkPageCitations]}
       rehypePlugins={[rehypeKatex]}
       className="aui-md"
       components={defaultComponents}
@@ -258,12 +258,12 @@ const defaultComponents = memoizeMarkdownComponents({
     />
   ),
   a: ({ className, href, children, ...props }) => {
-    // Intercept slide:// links and render as SlideLink navigation buttons
-    if (href?.startsWith('slide://')) {
-      const pageStr = href.slice('slide://'.length);
+    // Intercept page:// links and render as PageLink navigation buttons
+    if (href?.startsWith('page://')) {
+      const pageStr = href.slice('page://'.length);
       const page = Number.parseInt(pageStr, 10);
       if (!Number.isNaN(page) && page > 0) {
-        return <SlideLink page={page} className={className} />;
+        return <PageLink page={page} className={className} />;
       }
     }
     return (
