@@ -4,13 +4,15 @@ import {
   CheckCircle2,
   Download,
   HardDrive,
+  Layers,
+  MessageSquare,
   Trash2,
 } from 'lucide-react';
 import * as React from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import {
   deleteLocalModel,
@@ -241,33 +243,47 @@ export function LocalTab() {
         </p>
       </div>
 
-      <div className="mt-8 space-y-6">
-        {/* Embed server status */}
-        <div className="bg-card border-border/60 rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Embedding server</p>
-              <p className="text-muted-foreground text-xs">
-                Always-on · Port 28881 · Powers document indexing
-              </p>
-            </div>
-            {serverStatus ? (
-              <ServerStatusBadge status={serverStatus.embed} />
-            ) : (
-              <Badge variant="outline" className="text-xs">
-                —
-              </Badge>
-            )}
+      <div className="mt-8 space-y-8">
+        {/* ── Embedding Models ─────────────────────────────────── */}
+        <section className="space-y-3">
+          <div className="flex gap-2">
+            <Layers className="text-muted-foreground size-3.5" />
+            <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-tight">
+              Embedding Model
+            </h3>
           </div>
-        </div>
 
-        <Separator />
+          <div className="bg-card border-border/60 rounded-lg border p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <p className="font-mono text-sm font-medium">
+                  nomic-embed-text-v1.5
+                </p>
+                <p className="text-muted-foreground mt-1 text-xs max-w-xs">
+                  768-dim text embeddings · Always-on · Powers document indexing
+                </p>
+              </div>
+              <div className="shrink-0 pt-0.5">
+                {serverStatus ? (
+                  <ServerStatusBadge status={serverStatus.embed} />
+                ) : (
+                  <Badge variant="outline" className="text-xs">
+                    —
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
 
-        {/* Model list */}
-        <div className="space-y-3">
-          <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-tighter">
-            Chat Models
-          </h3>
+        {/* ── Chat Models ──────────────────────────────────────── */}
+        <section className="space-y-3">
+          <div className="flex items-start gap-2">
+            <MessageSquare className="text-muted-foreground size-3.5" />
+            <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-tight">
+              Chat Models
+            </h3>
+          </div>
 
           {catalog.models.map((model) => {
             const st = statuses[model.id];
@@ -281,105 +297,126 @@ export function LocalTab() {
                 key={model.id}
                 className="bg-card border-border/60 rounded-lg border p-4"
               >
-                <div className="flex items-start justify-between gap-4">
+                {/* Model info */}
+                <div className="flex justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap gap-1.5">
                       <p className="text-sm font-medium">{model.name}</p>
+                      <span className="text-muted-foreground/50 text-sm">
+                        •
+                      </span>
+                      <span className="text-muted-foreground text-sm">
+                        {formatBytes(model.sizeBytes)}
+                      </span>
                       {isRec && (
                         <Badge variant="secondary" className="text-xs">
                           Recommended
                         </Badge>
                       )}
-                      {isDownloaded && (
-                        <Badge
+                    </div>
+                    <p className="text-muted-foreground mt-1 text-xs max-w-xs">
+                      {model.description}
+                    </p>
+                  </div>
+
+                  {/* Top-right: download button for not-yet-downloaded models */}
+                  {!isDownloaded && (
+                    <div className="shrink-0">
+                      {dlProgress ? (
+                        <Button variant="outline" size="sm" disabled>
+                          Downloading…
+                        </Button>
+                      ) : (
+                        <Button
                           variant="outline"
-                          className="gap-1 text-xs text-green-600"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => handleDownload(model.id)}
+                          className="gap-1.5"
                         >
-                          <HardDrive className="size-3" />
-                          Downloaded
-                        </Badge>
+                          <Download className="size-3.5" />
+                          Download
+                        </Button>
                       )}
                     </div>
-                    <p className="text-muted-foreground mt-0.5 text-xs">
-                      {model.description} · {formatBytes(model.sizeBytes)}
-                    </p>
-
-                    {/* Download progress bar */}
-                    {dlProgress && (
-                      <div className="mt-2 space-y-1">
-                        <Progress
-                          value={
-                            dlProgress.total > 0
-                              ? (dlProgress.downloaded / dlProgress.total) * 100
-                              : undefined
-                          }
-                          className="h-1.5"
-                        />
-                        <p className="text-muted-foreground text-xs">
-                          {formatBytes(dlProgress.downloaded)} /{' '}
-                          {dlProgress.total > 0
-                            ? formatBytes(dlProgress.total)
-                            : '…'}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex shrink-0 items-center gap-2">
-                    {isDownloaded ? (
-                      <>
-                        {/* Enable/disable toggle — independent per model */}
-                        <div className="flex items-center gap-1.5">
-                          {isEnabled && serverStatus && (
-                            <ServerStatusBadge status={serverStatus.chat} />
-                          )}
-                          <Switch
-                            checked={isEnabled}
-                            disabled={busy}
-                            onCheckedChange={(v) =>
-                              handleToggleEnabled(model.id, v)
-                            }
-                            aria-label={`Use ${model.name} for local chat`}
-                          />
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          disabled={busy}
-                          onClick={() => handleDelete(model.id)}
-                          aria-label={`Delete ${model.name}`}
-                        >
-                          <Trash2 className="size-4 text-destructive" />
-                        </Button>
-                      </>
-                    ) : dlProgress ? (
-                      <Button variant="outline" size="sm" disabled>
-                        Downloading…
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => handleDownload(model.id)}
-                        className="gap-1.5"
-                      >
-                        <Download className="size-3.5" />
-                        Download
-                      </Button>
-                    )}
-                  </div>
+                  )}
                 </div>
+
+                {/* Download progress bar */}
+                {dlProgress && (
+                  <div className="mt-3 space-y-1">
+                    <Progress
+                      value={
+                        dlProgress.total > 0
+                          ? (dlProgress.downloaded / dlProgress.total) * 100
+                          : undefined
+                      }
+                      className="h-1.5"
+                    />
+                    <p className="text-muted-foreground text-xs">
+                      {formatBytes(dlProgress.downloaded)} /{' '}
+                      {dlProgress.total > 0
+                        ? formatBytes(dlProgress.total)
+                        : '…'}
+                    </p>
+                  </div>
+                )}
+
+                {/* Bottom action row — only for downloaded models */}
+                {isDownloaded && (
+                  <div className="border-border/50 mt-3 flex justify-between border-t pt-3">
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className="gap-1 text-xs text-green-600"
+                      >
+                        <HardDrive className="size-3" />
+                        Downloaded
+                      </Badge>
+                      {isEnabled && serverStatus && (
+                        <ServerStatusBadge status={serverStatus.chat} />
+                      )}
+                    </div>
+                    <div className="flex gap-3">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7"
+                        disabled={busy}
+                        onClick={() => handleDelete(model.id)}
+                        aria-label={`Delete ${model.name}`}
+                      >
+                        <Trash2 className="size-3.5 text-destructive" />
+                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Label
+                          htmlFor={`enable-${model.id}`}
+                          className="text-muted-foreground cursor-pointer text-xs"
+                        >
+                          {isEnabled ? 'Enabled' : 'Enable'}
+                        </Label>
+                        <Switch
+                          id={`enable-${model.id}`}
+                          checked={isEnabled}
+                          disabled={busy}
+                          onCheckedChange={(v) =>
+                            handleToggleEnabled(model.id, v)
+                          }
+                          aria-label={`Use ${model.name} for local chat`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
-        </div>
+        </section>
 
         {/* Error display */}
         {error && (
           <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3">
-            <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <AlertCircle className="mt-1 size-4 shrink-0 text-destructive" />
             <p className="text-sm text-destructive">{error}</p>
           </div>
         )}
