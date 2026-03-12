@@ -121,7 +121,7 @@ const CitationNodeView: FC<NodeViewProps> = ({ node }) => {
       <span
         className={cn(
           badgeVariants({ variant: 'secondaryOutline' }),
-          'align-baseline mx-0.5'
+          'align-middle mx-0.5'
         )}
       >
         Page {page}

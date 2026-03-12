@@ -6,6 +6,7 @@ import { ChatHeader } from '@/components/document/chat-header';
 import { Badge } from '@/components/ui/badge';
 import { ChatRuntimeProvider } from '@/lib/chat/chat-runtime-provider';
 import { useChats, useCreateChat } from '@/lib/chat/use-chat-queries';
+import { useSelectedModel } from '@/lib/model-context';
 import { listModels } from '@/lib/tauri';
 
 interface ChatPanelProps {
@@ -76,14 +77,14 @@ export function ChatPanel({ documentId, status }: ChatPanelProps) {
     return allModels[0]?.id ?? ''; // empty string = no models, but don't block
   })();
 
-  const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const { selectedModel, setSelectedModel } = useSelectedModel();
 
-  // Once we have a default model (including empty string), set it (only on first load)
+  // Once we have a default model (including empty string), seed it if not yet set
   useEffect(() => {
     if (defaultModel !== null && selectedModel === null) {
       setSelectedModel(defaultModel);
     }
-  }, [defaultModel, selectedModel]);
+  }, [defaultModel, selectedModel, setSelectedModel]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const processingState = isProcessingStatus(status)
     ? PROCESSING_STATUS_META[status]

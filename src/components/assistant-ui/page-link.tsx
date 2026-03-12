@@ -20,7 +20,7 @@ export function PageLink({ page, className }: PageLinkProps) {
       onClick={() => navigateToPage(page)}
       className={cn(
         badgeVariants({ variant: 'secondaryOutline' }),
-        'cursor-pointer align-baseline mx-0.5 hover:opacity-80 transition-opacity',
+        'cursor-pointer align-middle mx-0.5 hover:opacity-80 transition-opacity',
         className
       )}
       title={`Go to page ${page}`}

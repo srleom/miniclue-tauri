@@ -4,6 +4,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ThemeProvider } from './components/providers/theme-provider';
 import { Toaster } from './components/ui/sonner';
+import { ModelProvider } from './lib/model-context';
 import { routeTree } from './routeTree.gen';
 import './index.css';
 
@@ -36,10 +37,12 @@ if (!rootElement) {
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <Toaster />
-        <RouterProvider router={router} />
-      </ThemeProvider>
+      <ModelProvider>
+        <ThemeProvider>
+          <Toaster />
+          <RouterProvider router={router} />
+        </ThemeProvider>
+      </ModelProvider>
     </QueryClientProvider>
   </React.StrictMode>
 );
