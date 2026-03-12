@@ -304,7 +304,20 @@ pub async fn stream_chat(
         }
     }
 
-    // 1. Save user message
+    // 1. Get conversation history (last 10 messages for context) — fetch BEFORE saving the
+    //    current user message so it only contains prior turns (avoids duplicate user message
+    //    in the LLM payload).
+    let messages = db::chat::list_messages(&db, &chat_id, 10).await?;
+
+    let history: Vec<rag::query_rewriter::Message> = messages
+        .iter()
+        .map(|m| rag::query_rewriter::Message {
+            role: m.role.clone(),
+            content: extract_first_text_from_parts(&m.parts),
+        })
+        .collect();
+
+    // 2. Save user message
     let user_message_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -327,17 +340,6 @@ pub async fn stream_chat(
             message_id: user_message_id.clone(),
         })
         .map_err(|e| ApiError::internal_error(e.to_string()))?;
-
-    // 2. Get conversation history (last 10 messages for context)
-    let messages = db::chat::list_messages(&db, &chat_id, 10).await?;
-
-    let history: Vec<rag::query_rewriter::Message> = messages
-        .iter()
-        .map(|m| rag::query_rewriter::Message {
-            role: m.role.clone(),
-            content: extract_first_text_from_parts(&m.parts),
-        })
-        .collect();
 
     // 3 & 4. Run query rewriting and RAG retrieval in parallel to minimise latency.
     //
