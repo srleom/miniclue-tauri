@@ -32,25 +32,26 @@ fn build_rewrite_messages(original_query: &str, history: &[Message]) -> Vec<Mess
     messages
 }
 
-/// Rewrite a user query using streaming endpoint with Gemini 2.5 Flash Lite
-///
-/// Note: Always uses Gemini 2.5 Flash Lite via streaming for reliable, fast,
-/// and cost-effective query rewriting regardless of user's selected chat model.
+/// Rewrite a user query using the provided model and API key.
 pub async fn rewrite_query_streaming(
     original_query: &str,
     history: &[Message],
+    model: &str,
     api_key: &str,
+    base_url_override: Option<String>,
 ) -> Result<String, QueryRewriterError> {
     use futures::StreamExt;
 
-    // Always use Gemini 2.5 Flash Lite
-    let model = "gemini-2.5-flash-lite".to_string();
-
     // Use streaming parser
     let messages = build_rewrite_messages(original_query, history);
-    let mut stream = crate::services::llm::stream_chat(messages, model, api_key.to_string(), None)
-        .await
-        .map_err(|e| QueryRewriterError::ApiError(e.to_string()))?;
+    let mut stream = crate::services::llm::stream_chat(
+        messages,
+        model.to_string(),
+        api_key.to_string(),
+        base_url_override,
+    )
+    .await
+    .map_err(|e| QueryRewriterError::ApiError(e.to_string()))?;
 
     let mut rewritten = String::new();
     let timeout = tokio::time::Duration::from_secs(30);

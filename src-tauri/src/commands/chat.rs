@@ -222,6 +222,57 @@ fn resolve_model_credentials(
     })
 }
 
+/// Map a chat model to the corresponding small aux model for the same provider.
+///
+/// Returns `None` when the provider is unknown or no API key is configured.
+fn get_aux_model_credentials(model: &str, config: &AppConfig) -> Option<ModelCredentials> {
+    // Local: use same local model (no cloud round-trip)
+    if model == "local" || model.starts_with("local:") {
+        return Some(ModelCredentials {
+            model: model
+                .strip_prefix("local:")
+                .unwrap_or("local-model")
+                .to_string(),
+            api_key: String::new(),
+            base_url_override: Some(format!(
+                "http://127.0.0.1:{}/v1",
+                crate::services::llama_server::CHAT_PORT
+            )),
+        });
+    }
+
+    // Custom: use same custom provider model
+    if let Some(id) = model.strip_prefix("custom:") {
+        let cp = config.get_custom_provider(id)?;
+        return Some(ModelCredentials {
+            model: cp.model_id.clone(),
+            api_key: cp.api_key.clone(),
+            base_url_override: Some(cp.base_url.clone()),
+        });
+    }
+
+    // Standard providers: map to small aux model
+    let (aux_model, provider) = if model.starts_with("gpt") || model.starts_with("o1") {
+        ("gpt-4.1-nano", "openai")
+    } else if model.starts_with("claude") {
+        ("claude-haiku-4-5", "anthropic")
+    } else if model.starts_with("gemini") || model.starts_with("models/gemini") {
+        ("gemini-3.1-flash-lite-preview", "gemini")
+    } else if model.starts_with("grok") {
+        ("grok-4-1-fast-non-reasoning", "xai")
+    } else if model.starts_with("deepseek") {
+        ("deepseek-chat", "deepseek")
+    } else {
+        return None;
+    };
+
+    config.get_api_key(provider).map(|key| ModelCredentials {
+        model: aux_model.to_string(),
+        api_key: key.clone(),
+        base_url_override: None,
+    })
+}
+
 fn extract_first_text_from_parts(parts_json: &str) -> String {
     let parts_value: serde_json::Value =
         serde_json::from_str(parts_json).unwrap_or(serde_json::Value::Array(vec![]));
@@ -272,8 +323,8 @@ pub async fn stream_chat(
     let config_guard = state.config.read().await;
     let credentials = resolve_model_credentials(&model, &config_guard)?;
 
-    // Gemini key is optional — only needed for query rewriting, RAG, and title generation
-    let gemini_key: Option<String> = config_guard.get_api_key("gemini").cloned();
+    // Aux credentials use a small model from the same provider for query rewriting and title generation.
+    let aux_credentials = get_aux_model_credentials(&model, &config_guard);
     drop(config_guard);
 
     // If using local chat, ensure the server is running — restart it if it terminated.
@@ -344,35 +395,36 @@ pub async fn stream_chat(
     // 3 & 4. Run query rewriting and RAG retrieval in parallel to minimise latency.
     //
     // Query rewriting is skipped when:
-    //   - no Gemini key is available, OR
-    //   - the user is on a local model (avoid cloud round-trips for local-only users), OR
+    //   - no aux credentials are available (unknown provider or missing API key), OR
     //   - there is no conversation history (rewriting gives zero benefit on the first message).
     //
     // RAG retrieval always uses the *original* query so it can start immediately, in parallel
     // with rewriting.  The rewritten query (when available) is used as the final user message
     // sent to the LLM; chunks are retrieved from the original query with negligible quality
     // difference because rewrites are minor rephrasing.
-    let is_local_model = model == "local" || model.starts_with("local:");
     let has_history = !history.is_empty();
-    let should_rewrite = gemini_key.is_some() && !is_local_model && has_history;
+    let should_rewrite = aux_credentials.is_some() && has_history;
 
     let rewrite_fut = async {
         if should_rewrite {
-            let gkey = gemini_key.as_deref().unwrap();
-            rag::rewrite_query_streaming(&user_message, &history, gkey)
-                .await
-                .unwrap_or_else(|e| {
-                    log::warn!("Query rewriting failed: {}, using original query", e);
-                    user_message.clone()
-                })
+            let aux = aux_credentials.as_ref().unwrap();
+            rag::rewrite_query_streaming(
+                &user_message,
+                &history,
+                &aux.model,
+                &aux.api_key,
+                aux.base_url_override.clone(),
+            )
+            .await
+            .unwrap_or_else(|e| {
+                log::warn!("Query rewriting failed: {}, using original query", e);
+                user_message.clone()
+            })
+        } else if !has_history {
+            log::info!("No prior history — skipping query rewriting on first message");
+            user_message.clone()
         } else {
-            if is_local_model {
-                log::info!("Local model — skipping query rewriting");
-            } else if !has_history {
-                log::info!("No prior history — skipping query rewriting on first message");
-            } else {
-                log::info!("No Gemini key — skipping query rewriting");
-            }
+            log::info!("No aux credentials — skipping query rewriting");
             user_message.clone()
         }
     };
@@ -481,20 +533,18 @@ pub async fn stream_chat(
         })
         .map_err(|e| ApiError::internal_error(e.to_string()))?;
 
-    // 8. Trigger title generation if this is the first exchange (background task)
-    //    Only possible when a Gemini key is available (title generation uses Gemini).
+    // 8. Trigger title generation if this is the first exchange (background task).
     let message_count = db::chat::count_messages(&db, &chat_id).await.unwrap_or(0);
 
     if message_count == 2 {
         // First exchange
-        if let Some(gkey) = gemini_key {
+        if let Some(aux) = aux_credentials {
             let db_clone = db.clone();
             let chat_id_clone = chat_id.clone();
-            let model_clone = credentials.model.clone();
             let on_event_clone = on_event.clone();
 
             tauri::async_runtime::spawn(async move {
-                match generate_chat_title(&db_clone, &chat_id_clone, &gkey, &model_clone).await {
+                match generate_chat_title(&db_clone, &chat_id_clone, &aux).await {
                     Ok(Some((title, updated_at))) => {
                         if let Err(e) = on_event_clone.send(ChatStreamEvent::TitleUpdated {
                             chat_id: chat_id_clone,
@@ -511,7 +561,7 @@ pub async fn stream_chat(
                 }
             });
         } else {
-            log::info!("No Gemini key — skipping title generation");
+            log::info!("No aux credentials — skipping title generation");
         }
     }
 
@@ -521,8 +571,7 @@ pub async fn stream_chat(
 async fn generate_chat_title(
     db: &sqlx::SqlitePool,
     chat_id: &str,
-    api_key: &str,
-    model: &str,
+    aux: &ModelCredentials,
 ) -> Result<Option<(String, String)>, ApiError> {
     // Get first 2 messages
     let messages = db::chat::list_messages(db, chat_id, 2).await?;
@@ -560,12 +609,17 @@ async fn generate_chat_title(
         chat_id
     );
 
-    let title = llm::generate_title(title_messages, api_key.to_string(), model.to_string())
-        .await
-        .map_err(|e| {
-            log::error!("[generate_chat_title] Title generation failed: {}", e);
-            ApiError::internal_error(e.to_string())
-        })?;
+    let title = llm::generate_title(
+        title_messages,
+        aux.model.clone(),
+        aux.api_key.clone(),
+        aux.base_url_override.clone(),
+    )
+    .await
+    .map_err(|e| {
+        log::error!("[generate_chat_title] Title generation failed: {}", e);
+        ApiError::internal_error(e.to_string())
+    })?;
 
     log::info!("[generate_chat_title] Generated title: \"{}\"", title);
 

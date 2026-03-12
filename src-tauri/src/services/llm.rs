@@ -235,19 +235,14 @@ async fn stream_chat_with_options(
     Ok(Box::pin(stream))
 }
 
-/// Generate chat title using streaming endpoint with Gemini 2.5 Flash Lite
-///
-/// Note: Always uses Gemini 2.5 Flash Lite via streaming for reliable, fast,
-/// and cost-effective title generation regardless of user's selected chat model.
+/// Generate chat title using the provided model and API key.
 pub async fn generate_title(
     messages: Vec<Message>,
+    model: String,
     api_key: String,
-    _model: String, // Ignored - always use Gemini
+    base_url_override: Option<String>,
 ) -> Result<String, LlmError> {
     use futures::StreamExt;
-
-    // Always use Gemini 2.5 Flash Lite for title generation
-    let model = "gemini-2.5-flash-lite".to_string();
 
     // Use existing streaming parser for robustness
     let mut stream = stream_chat_with_options(
@@ -256,7 +251,7 @@ pub async fn generate_title(
         api_key,
         Some(TITLE_TEMPERATURE),
         Some(TITLE_MAX_TOKENS),
-        None,
+        base_url_override,
     )
     .await?;
 
