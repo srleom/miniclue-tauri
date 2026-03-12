@@ -1,6 +1,5 @@
-import { Folder, Pencil } from 'lucide-react';
-import { RenameDialog } from '@/components/common/rename-dialog';
-import { RenameForm } from '@/components/common/rename-form';
+import { Folder } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { useUpdateFolder } from '@/hooks/use-queries';
 
@@ -15,43 +14,91 @@ export default function FolderHeader({
   folderTitle,
   isDefault,
 }: FolderHeaderProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(folderTitle);
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const updateFolder = useUpdateFolder();
 
-  const handleUpdateFolder = async (id: string, title: string) => {
-    try {
-      await updateFolder.mutateAsync({ folderId: id, data: { title } });
-      return { data: undefined };
-    } catch {
-      return { error: 'Failed to update folder' };
+  // Sync edit value when title changes externally
+  useEffect(() => {
+    if (!isEditing) {
+      setEditValue(folderTitle);
+    }
+  }, [folderTitle, isEditing]);
+
+  // Select all text when entering edit mode
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleSave = async () => {
+    if (editValue.trim() && editValue.trim() !== folderTitle) {
+      try {
+        await updateFolder.mutateAsync({
+          folderId,
+          data: { title: editValue.trim() },
+        });
+      } catch (error) {
+        console.error('Error updating folder title:', error);
+        setEditValue(folderTitle);
+      }
+    } else {
+      setEditValue(folderTitle);
+    }
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditValue(folderTitle);
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      handleCancel();
     }
   };
 
   return (
-    <div className="group mb-7 flex items-center gap-2">
+    <div className="mb-7 flex items-center gap-2">
       <Folder />
-      <h1 className="text-center text-4xl font-semibold">{folderTitle}</h1>
-      {isDefault && <Badge variant="outline">Default</Badge>}
-      {!isDefault && (
-        <RenameDialog
-          trigger={
-            <button
-              type="button"
-              className="text-muted-foreground ml-2 opacity-100 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100"
-            >
-              <Pencil size={20} />
-            </button>
+      <div className="relative inline-flex">
+        {/* Sizer: invisible span with identical typography drives the container width */}
+        <span
+          aria-hidden
+          className="invisible whitespace-pre px-2.5 py-1 text-4xl font-semibold"
+        >
+          {editValue || '\u00A0'}
+        </span>
+        <input
+          ref={inputRef}
+          type="text"
+          readOnly={!isEditing}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={isEditing ? handleSave : undefined}
+          onKeyDown={isEditing ? handleKeyDown : undefined}
+          onClick={
+            isDefault || isEditing ? undefined : () => setIsEditing(true)
           }
-          title="Rename folder"
-          form={
-            <RenameForm
-              id={folderId}
-              defaultValue={folderTitle}
-              action={handleUpdateFolder}
-              successMessage="Folder renamed"
-            />
+          title={isDefault || isEditing ? undefined : 'Click to edit title'}
+          className={
+            isEditing
+              ? 'absolute inset-0 w-full rounded border border-input bg-transparent px-2 py-1 text-center text-4xl font-semibold focus:outline-none focus:ring-1 focus:ring-ring'
+              : isDefault
+                ? 'absolute inset-0 w-full cursor-default border border-transparent bg-transparent px-2 py-1 text-center text-4xl font-semibold focus:outline-none'
+                : 'absolute inset-0 w-full cursor-default rounded border border-transparent bg-transparent px-2 py-1 text-center text-4xl font-semibold transition-colors focus:outline-none hover:bg-accent hover:text-accent-foreground'
           }
         />
-      )}
+      </div>
+      {isDefault && <Badge variant="outline">Default</Badge>}
     </div>
   );
 }

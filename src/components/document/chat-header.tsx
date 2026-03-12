@@ -1,8 +1,8 @@
 import { History, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
 import DeleteDialog from '@/components/common/delete-dialog';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,17 +49,16 @@ export function ChatHeader({
   const updateChatMutation = useUpdateChat(documentId, chatId);
   const deleteChatMutation = useDeleteChat(documentId);
 
-  // Update edit value when chat changes
+  // Sync edit value when title changes externally
   useEffect(() => {
-    if (currentChat) {
-      setEditValue(currentChat.title || 'New Chat');
+    if (!isEditing) {
+      setEditValue(currentChat?.title || 'New Chat');
     }
-  }, [currentChat]);
+  }, [currentChat, isEditing]);
 
-  // Focus input when entering edit mode
+  // Select all text when entering edit mode
   useEffect(() => {
     if (isEditing && inputRef.current) {
-      inputRef.current.focus();
       inputRef.current.select();
     }
   }, [isEditing]);
@@ -69,17 +68,22 @@ export function ChatHeader({
   };
 
   const handleSave = async () => {
-    if (editValue.trim() && editValue !== currentChat?.title) {
+    const currentTitle = currentChat?.title || 'New Chat';
+    const trimmedTitle = editValue.trim();
+
+    if (trimmedTitle && trimmedTitle !== currentTitle) {
       try {
         await updateChatMutation.mutateAsync({
-          title: editValue.trim(),
+          title: trimmedTitle,
         });
       } catch (error) {
         console.error('Error updating chat title:', error);
-        // Revert to original title on error
-        setEditValue(currentChat?.title || 'New Chat');
+        setEditValue(currentTitle);
       }
+    } else {
+      setEditValue(currentTitle);
     }
+
     setIsEditing(false);
   };
 
@@ -148,26 +152,31 @@ export function ChatHeader({
     <div className="flex items-center justify-between w-full">
       {/* Left: Editable Chat Title */}
       <div className="flex-1 min-w-0">
-        {isEditing ? (
+        <div className="relative inline-flex max-w-[320px]">
+          {/* Sizer: invisible span with identical typography drives the container width */}
+          <span
+            aria-hidden
+            className="invisible whitespace-pre px-2.5 py-1 text-base font-medium"
+          >
+            {editValue || '\u00A0'}
+          </span>
           <input
             ref={inputRef}
             type="text"
+            readOnly={!isEditing}
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            onBlur={handleSave}
-            onKeyDown={handleKeyDown}
-            className="w-full max-w-[320px] rounded border border-input bg-transparent px-2 py-1 text-base font-medium focus:outline-none focus:ring-1 focus:ring-ring"
+            onBlur={isEditing ? handleSave : undefined}
+            onKeyDown={isEditing ? handleKeyDown : undefined}
+            onClick={isEditing ? undefined : handleStartEdit}
+            title={isEditing ? undefined : 'Click to edit title'}
+            className={
+              isEditing
+                ? 'absolute inset-0 w-full rounded border border-input bg-transparent px-2 py-1 text-base font-medium focus:outline-none focus:ring-1 focus:ring-ring'
+                : 'absolute inset-0 w-full cursor-default rounded border border-transparent bg-transparent px-2 py-1 text-left text-base font-medium transition-colors focus:outline-none hover:bg-accent hover:text-accent-foreground truncate'
+            }
           />
-        ) : (
-          <button
-            type="button"
-            onClick={handleStartEdit}
-            className="inline-block max-w-[320px] truncate rounded px-2 py-1 text-left text-base font-medium transition-colors hover:bg-accent"
-            title="Click to edit title"
-          >
-            {currentChat?.title || 'New Chat'}
-          </button>
-        )}
+        </div>
       </div>
 
       {/* Right: History and Plus Buttons */}

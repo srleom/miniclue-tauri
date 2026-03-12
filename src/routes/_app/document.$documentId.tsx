@@ -170,7 +170,11 @@ function DocumentPage() {
               <>
                 <ResizableHandle withHandle />
                 <ResizablePanel defaultSize={50} minSize={30}>
-                  <ChatPanel documentId={documentId} status={document.status} />
+                  <ChatPanel
+                    key={documentId}
+                    documentId={documentId}
+                    status={document.status}
+                  />
                 </ResizablePanel>
               </>
             )}
