@@ -1,4 +1,4 @@
-use super::prompts::{build_lecture_context_message, CHAT_RESPONSE_SYSTEM_PROMPT};
+use super::prompts::{build_document_context_message, CHAT_RESPONSE_SYSTEM_PROMPT};
 use super::query_rewriter::Message;
 use super::retriever::RetrievedChunk;
 
@@ -22,7 +22,7 @@ pub fn build_rag_context(
     // 2. RAG context message (legacy format)
     let context_message = Message {
         role: "user".to_string(),
-        content: build_lecture_context_message(chunks),
+        content: build_document_context_message(chunks),
     };
     messages.push(context_message);
 
@@ -69,10 +69,10 @@ mod tests {
         assert_eq!(messages[0].role, "system");
         assert_eq!(messages[0].content, CHAT_RESPONSE_SYSTEM_PROMPT);
         assert_eq!(messages[1].role, "user");
-        assert!(messages[1].content.contains("<lecture_context>"));
+        assert!(messages[1].content.contains("<document_context>"));
         assert!(messages[1]
             .content
-            .contains("<slide id=\"12\" chunk=\"0\">"));
+            .contains("<page id=\"12\" chunk=\"0\">"));
         assert_eq!(messages[2].role, "assistant");
         assert_eq!(messages[3].role, "user");
         assert_eq!(messages[3].content, "Explain again");

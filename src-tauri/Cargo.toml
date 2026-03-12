@@ -1,7 +1,7 @@
 [package]
 name = "miniclue"
 version = "0.1.0"
-description = "MiniClue - AI-powered educational desktop app"
+description = "MiniClue - Read and chat with any document, privately"
 authors = ["MiniClue"]
 license = "MIT"
 repository = ""
