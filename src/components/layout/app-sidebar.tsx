@@ -174,7 +174,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   to="/"
                   className="flex items-center justify-center rounded-md"
                 >
-                  <img src="/logo.svg" alt="MiniClue" className="size-24" />
+                  <img
+                    src="/logo.svg"
+                    alt="MiniClue"
+                    className="size-24 dark:invert"
+                  />
                 </Link>
               </div>
             </SidebarMenuButton>

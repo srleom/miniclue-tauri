@@ -1,4 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   AlertCircle,
   CheckCircle2,
@@ -80,6 +82,7 @@ function ServerStatusBadge({ status }: { status: string }) {
 // ---------------------------------------------------------------------------
 
 export function LocalTab() {
+  const queryClient = useQueryClient();
   const [catalog, setCatalog] = React.useState<ModelCatalog | null>(null);
   const [recommendedId, setRecommendedId] = React.useState<string | null>(null);
   const [statuses, setStatuses] = React.useState<
@@ -193,7 +196,12 @@ export function LocalTab() {
         next.delete(modelId);
         return next;
       });
+      await queryClient.invalidateQueries({ queryKey: ['models'] });
+      const modelName =
+        catalog?.models.find((m) => m.id === modelId)?.name ?? modelId;
+      toast.success(`${modelName} deleted`);
     } catch (e) {
+      toast.error(`Delete failed: ${String(e)}`);
       setError(`Delete failed: ${String(e)}`);
     } finally {
       setBusy(false);
@@ -214,9 +222,16 @@ export function LocalTab() {
         }
         return next;
       });
+      await queryClient.invalidateQueries({ queryKey: ['models'] });
+      const modelName =
+        catalog?.models.find((m) => m.id === modelId)?.name ?? modelId;
+      toast.success(`${modelName} ${enabled ? 'enabled' : 'disabled'}`);
       const srvStatus = await getLlamaServerStatus();
       setServerStatus(srvStatus);
     } catch (e) {
+      toast.error(
+        `Failed to ${enabled ? 'enable' : 'disable'} local AI: ${String(e)}`
+      );
       setError(
         `Failed to ${enabled ? 'enable' : 'disable'} local AI: ${String(e)}`
       );
