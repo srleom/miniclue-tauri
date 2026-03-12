@@ -58,9 +58,9 @@ fn build_document_context_parts(
         });
     }
 
-    // 3. Citation instruction
+    // 3. Closing instruction
     parts.push(ContentPart::Text {
-        text: "Based on the context above (and images provided), please answer my upcoming question.\n\n    IMPORTANT: Cite every claim with [Page N] (using the `id` from the `<page>` element). Example: \"The agreement terminates upon written notice [Page 4].\"".to_string(),
+        text: "Based on the context above (and any images provided), please answer my upcoming question.".to_string(),
     });
 
     parts

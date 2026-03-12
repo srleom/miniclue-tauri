@@ -20,12 +20,12 @@ pub struct ChunkedPage {
     pub chunks: Vec<TextChunk>,
 }
 
-const MAX_CHUNK_TOKENS: usize = 1000;
-const OVERLAP_TOKENS: usize = 200;
+const MAX_CHUNK_TOKENS: usize = 450;
+const OVERLAP_TOKENS: usize = 50;
 
 /// Chunk text using token-based sliding window
-/// - Max chunk size: 1000 tokens
-/// - Overlap: 200 tokens
+/// - Max chunk size: 450 tokens (keeps inputs well under embed server's 512-token batch limit)
+/// - Overlap: 50 tokens
 pub fn chunk_pages(pages: &[(i64, String)]) -> Result<Vec<ChunkedPage>, ChunkerError> {
     let bpe = cl100k_base().map_err(|e| ChunkerError::TokenizationError(e.to_string()))?;
 

@@ -391,46 +391,44 @@ pub async fn stream_chat(
         })
         .map_err(|e| ApiError::internal_error(e.to_string()))?;
 
-    // 3 & 4. Run query rewriting and RAG retrieval in parallel to minimise latency.
+    // 3 & 4. Query rewriting and RAG retrieval.
     //
     // Query rewriting is skipped when:
     //   - no aux credentials are available (unknown provider or missing API key), OR
     //   - there is no conversation history (rewriting gives zero benefit on the first message).
     //
-    // RAG retrieval always uses the *original* query so it can start immediately, in parallel
-    // with rewriting.  The rewritten query (when available) is used as the final user message
-    // sent to the LLM; chunks are retrieved from the original query with negligible quality
-    // difference because rewrites are minor rephrasing.
+    // When rewriting is enabled, we rewrite first and then retrieve with the improved query so
+    // that co-reference resolution and keyword expansion actually improve retrieval quality.
+    // When rewriting is skipped, we retrieve immediately with the original query.
     let has_history = !history.is_empty();
     let should_rewrite = aux_credentials.is_some() && has_history;
 
-    let rewrite_fut = async {
-        if should_rewrite {
-            let aux = aux_credentials.as_ref().unwrap();
-            rag::rewrite_query_streaming(
-                &user_message,
-                &history,
-                &aux.model,
-                &aux.api_key,
-                aux.base_url_override.clone(),
-            )
-            .await
-            .unwrap_or_else(|e| {
-                log::warn!("Query rewriting failed: {}, using original query", e);
-                user_message.clone()
-            })
-        } else if !has_history {
-            log::info!("No prior history — skipping query rewriting on first message");
+    let (rewritten_query, chunks) = if should_rewrite {
+        // Rewrite first, then retrieve with the better query
+        let aux = aux_credentials.as_ref().unwrap();
+        let rewritten = rag::rewrite_query_streaming(
+            &user_message,
+            &history,
+            &aux.model,
+            &aux.api_key,
+            aux.base_url_override.clone(),
+        )
+        .await
+        .unwrap_or_else(|e| {
+            log::warn!("Query rewriting failed: {}, using original query", e);
             user_message.clone()
+        });
+        let chunks = rag::retrieve_chunks(&rewritten, &document_id, &db, 5).await;
+        (rewritten, chunks)
+    } else {
+        if !has_history {
+            log::info!("No prior history — skipping query rewriting on first message");
         } else {
             log::info!("No aux credentials — skipping query rewriting");
-            user_message.clone()
         }
+        let chunks = rag::retrieve_chunks(&user_message, &document_id, &db, 5).await;
+        (user_message.clone(), chunks)
     };
-
-    let rag_fut = rag::retrieve_chunks(&user_message, &document_id, &db, 3);
-
-    let (rewritten_query, chunks) = tokio::join!(rewrite_fut, rag_fut);
     let mut chunks = chunks.unwrap_or_else(|e| {
         log::warn!("RAG retrieval failed: {}, using empty chunks", e);
         vec![]

@@ -143,7 +143,7 @@ mod tests {
         assert_eq!(messages[6].content.as_text().unwrap(), "Message 7");
         assert_eq!(
             messages[7].content.as_text().unwrap(),
-            "The final question to rewrite is: What about that?\n\nRewritten Query:"
+            "The question to rewrite is: What about that?"
         );
     }
 
