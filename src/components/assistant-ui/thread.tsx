@@ -14,7 +14,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
-  PencilIcon,
   SquareIcon,
 } from 'lucide-react';
 import type { FC } from 'react';
@@ -287,11 +286,12 @@ const UserActionBar: FC = () => {
       autohide="not-last"
       className="aui-user-action-bar-root flex flex-col items-end"
     >
-      <ActionBarPrimitive.Edit asChild>
+      {/* TODO: Add edit functionality */}
+      {/* <ActionBarPrimitive.Edit asChild>
         <TooltipIconButton tooltip="Edit" className="aui-user-action-edit p-4">
           <PencilIcon strokeWidth={2} className="size-3.5" />
         </TooltipIconButton>
-      </ActionBarPrimitive.Edit>
+      </ActionBarPrimitive.Edit> */}
     </ActionBarPrimitive.Root>
   );
 };
