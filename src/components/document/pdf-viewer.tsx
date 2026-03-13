@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { debounce } from '@/lib/utils';
+import { debounce, throttle } from '@/lib/utils';
 
 // Import required stylesheets for text selection and annotations (links)
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -95,6 +95,7 @@ export default function PdfViewer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fitToWidthScale, setFitToWidthScale] = useState(1.0);
   const [pdfPageWidth, setPdfPageWidth] = useState<number | null>(null);
+  const [displayedPage, setDisplayedPage] = useState(pageNumber);
   const containerRef = useRef<HTMLDivElement>(null);
   const currentPageRef = useRef(pageNumber);
   const previousFileUrlRef = useRef(fileUrl);
@@ -110,9 +111,10 @@ export default function PdfViewer({
     setScale('fit'); // Reset zoom to fit mode
   }
 
-  // Update ref when pageNumber prop changes
+  // Update ref and displayed page when pageNumber prop changes
   useEffect(() => {
     currentPageRef.current = pageNumber;
+    setDisplayedPage(pageNumber);
   }, [pageNumber]);
 
   // Scroll to page when pageNumber prop changes externally (e.g. citation click)
@@ -280,6 +282,7 @@ export default function PdfViewer({
       if (currentPage !== currentPageRef.current) {
         currentPageRef.current = currentPage;
         prevPageNumberPropRef.current = currentPage; // Prevent scrollIntoView feedback loop
+        setDisplayedPage(currentPage); // Update display immediately, without waiting for prop round-trip
         onPageChange(currentPage);
       }
     };
@@ -292,9 +295,9 @@ export default function PdfViewer({
 
     // Use IntersectionObserver to trigger updates when any page visibility changes
     // Debounce to avoid excessive calls when multiple pages animate in/out during streaming
-    const debouncedUpdateCurrentPage = debounce(updateCurrentPage, 50);
+    const throttledUpdateCurrentPage = throttle(updateCurrentPage, 50);
     const observer = new IntersectionObserver(() => {
-      debouncedUpdateCurrentPage();
+      throttledUpdateCurrentPage();
     }, options);
 
     // Observe all page elements
@@ -306,7 +309,7 @@ export default function PdfViewer({
     // Also listen to scroll events for reliable updates
     // This ensures updates happen even when no pages enter/exit the viewport
     // Debounce to avoid firing on every pixel of scroll during streaming re-renders
-    const handleScroll = debounce(() => {
+    const handleScroll = throttle(() => {
       updateCurrentPage();
     }, 50);
     container.addEventListener('scroll', handleScroll);
@@ -327,7 +330,7 @@ export default function PdfViewer({
         {/* Page Navigation - Left */}
         <div className="flex items-center gap-2">
           <span className="tabular-nums text-sm font-medium">
-            {pageNumber} / {numPages || '—'}
+            {displayedPage} / {numPages || '—'}
           </span>
         </div>
 
