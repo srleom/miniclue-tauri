@@ -116,7 +116,7 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
       setFiles([]);
       setFilePaths([]);
 
-      if (documentIds.length === 1) {
+      if (documentIds.length > 0) {
         navigate({
           to: '/document/$documentId',
           params: { documentId: documentIds[0] },
