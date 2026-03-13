@@ -419,16 +419,27 @@ fn copy_libs_to_target_dir(source_dir: &Path, lib_extensions: &[&str]) -> Result
     Ok(())
 }
 
-/// Walk up from `start` to find a directory whose name is "debug" or "release"
-/// and whose parent's name is "target".
+/// Walk up from `start` to find the `target/{profile}/` directory.
+///
+/// Handles both native builds:
+///   `target/{profile}/build/{crate}/out`  → parent of `{profile}` is `target`
+/// and cross-compilation builds:
+///   `target/{triple}/{profile}/build/{crate}/out`  → grandparent of `{profile}` is `target`
 fn find_target_profile_dir(start: &Path) -> Option<PathBuf> {
     let mut current = start.to_path_buf();
     loop {
         let name = current.file_name()?.to_str()?;
         if name == "debug" || name == "release" {
+            // Native: target/{profile}/
             if let Some(parent) = current.parent() {
                 if parent.file_name().and_then(|n| n.to_str()) == Some("target") {
                     return Some(current);
+                }
+                // Cross-compile: target/{triple}/{profile}/
+                if let Some(grandparent) = parent.parent() {
+                    if grandparent.file_name().and_then(|n| n.to_str()) == Some("target") {
+                        return Some(current);
+                    }
                 }
             }
         }
