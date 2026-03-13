@@ -7,16 +7,6 @@ lazy_static::lazy_static! {
     pub static ref MODEL_CATALOG: std::collections::HashMap<&'static str, Vec<ModelEntry>> = {
         let mut m = std::collections::HashMap::new();
         m.insert("openai", vec![
-            ("gpt-5.4", "GPT-5.4", true),
-            ("gpt-5.3-chat-latest", "GPT-5.3 chat latest", true),
-            ("gpt-5.2", "GPT-5.2", true),
-            ("gpt-5.2-chat-latest", "GPT-5.2 chat latest", true),
-            ("gpt-5.1", "GPT-5.1", true),
-            ("gpt-5.1-chat-latest", "GPT-5.1 chat latest", true),
-            ("gpt-5", "GPT-5", true),
-            ("gpt-5-chat-latest", "GPT-5 chat latest", true),
-            ("gpt-5-mini", "GPT-5 mini", true),
-            ("gpt-5-nano", "GPT-5 nano", true),
             ("gpt-4.1", "GPT-4.1", true),
             ("gpt-4.1-mini", "GPT-4.1 mini", true),
             ("gpt-4.1-nano", "GPT-4.1 nano", true),
@@ -24,21 +14,25 @@ lazy_static::lazy_static! {
             ("gpt-4o-mini", "GPT-4o mini", true),
         ]);
         m.insert("gemini", vec![
-            ("gemini-3.1-pro-preview", "Gemini 3.1 Pro Preview", true),
-            ("gemini-3-flash-preview", "Gemini 3 Flash Preview", true),
-            ("gemini-3.1-flash-lite-preview", "Gemini 3.1 Flash Lite Preview", true),
+            ("gemini-2.5-pro-preview-06-05", "Gemini 2.5 Pro", true),
+            ("gemini-2.5-flash-preview-05-20", "Gemini 2.5 Flash", true),
+            ("gemini-2.0-flash", "Gemini 2.0 Flash", true),
+            ("gemini-2.0-flash-lite", "Gemini 2.0 Flash Lite", true),
         ]);
         m.insert("anthropic", vec![
+            ("claude-opus-4-5", "Claude Opus 4.5", true),
             ("claude-sonnet-4-5", "Claude Sonnet 4.5", true),
             ("claude-haiku-4-5", "Claude Haiku 4.5", true),
         ]);
         m.insert("xai", vec![
-            ("grok-4-1-fast-reasoning", "Grok 4.1 Fast (Reasoning)", true),
-            ("grok-4-1-fast-non-reasoning", "Grok 4.1 Fast (Non-reasoning)", true),
+            ("grok-3", "Grok 3", true),
+            ("grok-3-fast", "Grok 3 Fast", true),
+            ("grok-3-mini", "Grok 3 Mini", false),
+            ("grok-3-mini-fast", "Grok 3 Mini Fast", false),
         ]);
         m.insert("deepseek", vec![
-            ("deepseek-chat", "DeepSeek-V3.2 (Non-thinking Mode)", false),
-            ("deepseek-reasoner", "DeepSeek-V3.2 (Thinking Mode)", false),
+            ("deepseek-chat", "DeepSeek V3 (Chat)", false),
+            ("deepseek-reasoner", "DeepSeek R1 (Reasoner)", false),
         ]);
         m
     };
@@ -46,10 +40,10 @@ lazy_static::lazy_static! {
     /// Default models enabled when a user first adds an API key for a provider.
     pub static ref DEFAULT_MODELS: std::collections::HashMap<&'static str, Vec<&'static str>> = {
         let mut m = std::collections::HashMap::new();
-        m.insert("openai", vec!["gpt-5.1", "gpt-4.1", "gpt-4.1-mini"]);
-        m.insert("gemini", vec!["gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemini-3.1-pro-preview"]);
+        m.insert("openai", vec!["gpt-4.1", "gpt-4.1-mini", "gpt-4o"]);
+        m.insert("gemini", vec!["gemini-2.5-flash-preview-05-20", "gemini-2.0-flash", "gemini-2.5-pro-preview-06-05"]);
         m.insert("anthropic", vec!["claude-sonnet-4-5", "claude-haiku-4-5"]);
-        m.insert("xai", vec!["grok-4-1-fast-reasoning", "grok-4-1-fast-non-reasoning"]);
+        m.insert("xai", vec!["grok-3", "grok-3-fast"]);
         m.insert("deepseek", vec!["deepseek-chat", "deepseek-reasoner"]);
         m
     };
