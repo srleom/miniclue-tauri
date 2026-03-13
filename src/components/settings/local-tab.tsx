@@ -289,7 +289,7 @@ export function LocalTab() {
                   className="gap-1 text-xs text-green-600"
                 >
                   <HardDrive className="size-3" />
-                  Always On
+                  Downloaded
                 </Badge>
                 {serverStatus && (
                   <ServerStatusBadge status={serverStatus.embed} />

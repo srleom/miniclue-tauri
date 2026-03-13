@@ -79,21 +79,22 @@ function buildSuggestions(
 ): SuggestionItem[] {
   const items: SuggestionItem[] = [];
   const q = query.toLowerCase();
+  const maxPage = totalPages > 0 ? totalPages : 0;
 
-  // Current page entry
+  // Current page entry — shown when query is empty, matches "currentpage", or
+  // is a generic "page" prefix without a specific number yet.
   const showCurrentPage =
     q === '' || 'currentpage'.includes(q) || isFuzzyMatch(q, 'currentpage');
   if (showCurrentPage) {
     items.push({ label: `Current Page (${currentPage})`, page: currentPage });
   }
 
-  const maxPage = totalPages > 0 ? totalPages : 0;
-
   if (q === '') {
     for (let i = 1; i <= maxPage; i++) {
       items.push({ label: `Page ${i}`, page: i });
     }
   } else if (/^\d+$/.test(q)) {
+    // Pure digit query — filter pages whose number starts with the digits typed.
     const exact = Number.parseInt(q, 10);
     const hasExact = exact > 0 && exact <= maxPage;
     if (hasExact) {
@@ -103,6 +104,33 @@ function buildSuggestions(
       if (i === exact) continue;
       if (String(i).startsWith(q)) {
         items.push({ label: `Page ${i}`, page: i });
+      }
+    }
+  } else if ('page'.startsWith(q)) {
+    // Partial "page" prefix ("p", "pa", "pag") — show all pages
+    for (let i = 1; i <= maxPage; i++) {
+      items.push({ label: `Page ${i}`, page: i });
+    }
+  } else if (q.startsWith('page')) {
+    // "page" prefix with optional number suffix, e.g. "@page" or "@page2".
+    const suffix = q.slice(4); // everything after "page"
+    if (suffix === '') {
+      // Just "@page" — show all pages.
+      for (let i = 1; i <= maxPage; i++) {
+        items.push({ label: `Page ${i}`, page: i });
+      }
+    } else if (/^\d+$/.test(suffix)) {
+      // "@page2", "@page12", etc. — filter by the numeric suffix.
+      const exact = Number.parseInt(suffix, 10);
+      const hasExact = exact > 0 && exact <= maxPage;
+      if (hasExact) {
+        items.push({ label: `Page ${exact}`, page: exact });
+      }
+      for (let i = 1; i <= maxPage; i++) {
+        if (i === exact) continue;
+        if (String(i).startsWith(suffix)) {
+          items.push({ label: `Page ${i}`, page: i });
+        }
       }
     }
   }
