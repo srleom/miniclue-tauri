@@ -264,27 +264,35 @@ export function LocalTab() {
           <div className="flex gap-2">
             <Layers className="text-muted-foreground size-3.5" />
             <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-tight">
-              Embedding Model
+              Embedding
             </h3>
           </div>
 
           <div className="bg-card border-border/60 rounded-lg border p-4">
-            <div className="flex justify-between gap-4">
+            <div className="flex justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <p className="font-mono text-sm font-medium">
-                  nomic-embed-text-v1.5
-                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  <p className="text-sm font-medium">nomic-embed-text-v1.5</p>
+                  <span className="text-muted-foreground/50 text-sm">•</span>
+                  <span className="text-muted-foreground text-sm">274 MB</span>
+                </div>
                 <p className="text-muted-foreground mt-1 text-xs max-w-xs">
-                  768-dim text embeddings · Always-on · Powers document indexing
+                  768-dim text embeddings · Powers document indexing
                 </p>
               </div>
-              <div className="shrink-0 pt-0.5">
-                {serverStatus ? (
+            </div>
+
+            <div className="border-border/50 mt-3 flex items-center border-t pt-3">
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="gap-1 text-xs text-green-600"
+                >
+                  <HardDrive className="size-3" />
+                  Always On
+                </Badge>
+                {serverStatus && (
                   <ServerStatusBadge status={serverStatus.embed} />
-                ) : (
-                  <Badge variant="outline" className="text-xs">
-                    —
-                  </Badge>
                 )}
               </div>
             </div>
@@ -296,7 +304,7 @@ export function LocalTab() {
           <div className="flex items-start gap-2">
             <MessageSquare className="text-muted-foreground size-3.5" />
             <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-tight">
-              Chat Models
+              Chat
             </h3>
           </div>
 
