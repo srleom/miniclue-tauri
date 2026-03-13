@@ -42,7 +42,7 @@ function HomePage() {
         ) : (
           <div className="w-full max-w-2xl">
             <div className="flex gap-2 justify-center items-center mb-10">
-              <img src="/icon.svg" alt="Logo" className="size-10" />
+              <img src="/icon.svg" alt="Logo" className="size-10 dark:invert" />
               <h1 className="text-4xl font-medium tracking-tight">
                 {greeting}
               </h1>
