@@ -1,10 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { listen } from '@tauri-apps/api/event';
 import { ArrowLeft } from 'lucide-react';
 import * as React from 'react';
-import { toast } from 'sonner';
-import { DownloadProgressPopup } from '@/components/download-progress-popup';
 import { ApiKeysStep } from '@/components/onboarding/api-keys-step';
 import {
   BG_DOWNLOAD_MODEL_KEY,
@@ -16,20 +13,10 @@ import {
 import { LocalModelStep } from '@/components/onboarding/local-model-step';
 import { WelcomeStep } from '@/components/onboarding/welcome-step';
 import { Button } from '@/components/ui/button';
-import {
-  downloadLocalModel,
-  getHardwareProfile,
-  getLocalModelStatus,
-  getModelCatalog,
-  getRecommendedModelId,
-  setLocalChatEnabled,
-} from '@/lib/tauri';
-import type {
-  DownloadProgress,
-  HardwareProfile,
-  LocalModelStatus,
-  ModelCatalog,
-} from '@/lib/types';
+import { useDownload } from '@/components/providers/download-provider';
+import { useLocalModelCatalog } from '@/hooks/use-local-model-catalog';
+import { getHardwareProfile, setLocalChatEnabled } from '@/lib/tauri';
+import type { HardwareProfile } from '@/lib/types';
 
 export const Route = createFileRoute('/onboarding')({
   component: OnboardingPage,
@@ -38,124 +25,62 @@ export const Route = createFileRoute('/onboarding')({
 function OnboardingPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { startDownload } = useDownload();
 
   const [step, setStep] = React.useState<OnboardingStep>('welcome');
 
-  // Model state
-  const [catalog, setCatalog] = React.useState<ModelCatalog | null>(null);
+  // Catalog + statuses
+  const {
+    catalog,
+    recommendedId,
+    statuses: modelStatuses,
+  } = useLocalModelCatalog();
+
+  // Onboarding-specific state
   const [profile, setProfile] = React.useState<HardwareProfile | null>(null);
-  const [recommendedId, setRecommendedId] = React.useState<string | null>(null);
   const [selectedModelId, setSelectedModelId] = React.useState<string | null>(
     null
   );
-  const [modelStatuses, setModelStatuses] = React.useState<
-    Record<string, LocalModelStatus>
-  >({});
   const [downloading, setDownloading] = React.useState(false);
-  const [downloadComplete, setDownloadComplete] = React.useState(false);
-  const [dismissed, setDismissed] = React.useState(false);
-  const dismissedRef = React.useRef(false);
-  const [downloadProgress, setDownloadProgress] = React.useState<{
-    downloaded: number;
-    total: number;
-  } | null>(null);
-  const completionTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
 
-  // Clean up completion timer on unmount
+  // Load hardware profile
   React.useEffect(() => {
-    return () => {
-      if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
-    };
+    getHardwareProfile()
+      .then(setProfile)
+      .catch((e) => console.error('Failed to load hardware profile:', e));
   }, []);
 
+  // Once the catalog loads, default the selection to the recommended model
   React.useEffect(() => {
-    async function load() {
-      try {
-        const [cat, recId, hw] = await Promise.all([
-          getModelCatalog(),
-          getRecommendedModelId(),
-          getHardwareProfile(),
-        ]);
-        setCatalog(cat);
-        setRecommendedId(recId);
-        setProfile(hw);
-
-        const statuses = await Promise.all(
-          cat.models.map((m) => getLocalModelStatus(m.id))
-        );
-        const statusMap: Record<string, LocalModelStatus> = {};
-        for (const s of statuses) statusMap[s.modelId] = s;
-        setModelStatuses(statusMap);
-
-        setSelectedModelId(recId);
-      } catch (e) {
-        console.error('Failed to load model catalog:', e);
-      }
+    if (recommendedId !== null && selectedModelId === null) {
+      setSelectedModelId(recommendedId);
     }
-    void load();
-  }, []);
-
-  React.useEffect(() => {
-    const unlisten = listen<DownloadProgress>(
-      'model-download-progress',
-      (event) => {
-        const { modelId, downloadedBytes, totalBytes } = event.payload;
-        if (modelId === selectedModelId) {
-          setDownloadProgress({
-            downloaded: downloadedBytes,
-            total: totalBytes,
-          });
-        }
-      }
-    );
-    return () => {
-      void unlisten.then((fn) => fn());
-    };
-  }, [selectedModelId]);
-
-  const handleClose = () => {
-    setDismissed(true);
-    dismissedRef.current = true;
-  };
+  }, [recommendedId, selectedModelId]);
 
   async function handleDownload() {
     if (!selectedModelId) return;
     const modelName =
       catalog?.models.find((m) => m.id === selectedModelId)?.name ?? 'AI model';
+
     setDownloading(true);
-    setDownloadComplete(false);
-    setDismissed(false);
-    dismissedRef.current = false;
-    setDownloadProgress(null);
+
+    // Store in localStorage so the background-recovery path in DownloadProvider
+    // can resume if the user completes onboarding before the download finishes.
     localStorage.setItem(BG_DOWNLOAD_MODEL_KEY, selectedModelId);
     localStorage.setItem(BG_DOWNLOAD_MODEL_NAME_KEY, modelName);
+
     try {
-      await downloadLocalModel(selectedModelId);
-      await setLocalChatEnabled(true, selectedModelId);
-      await queryClient.invalidateQueries({ queryKey: ['models'] });
+      await startDownload(selectedModelId, modelName);
+      // startDownload already called setLocalChatEnabled + invalidated queries
       localStorage.removeItem(BG_DOWNLOAD_MODEL_KEY);
       localStorage.removeItem(BG_DOWNLOAD_MODEL_NAME_KEY);
-      setDownloading(false);
       setStep('api-keys');
-      if (dismissedRef.current) {
-        toast.success(`${modelName} downloaded`);
-      } else {
-        setDownloadComplete(true);
-        if (completionTimerRef.current)
-          clearTimeout(completionTimerRef.current);
-        completionTimerRef.current = setTimeout(() => {
-          setDownloadComplete(false);
-          setDownloadProgress(null);
-        }, 3000);
-      }
     } catch (e) {
       console.error('Download failed:', e);
-      setDownloading(false);
-      setDownloadComplete(false);
       localStorage.removeItem(BG_DOWNLOAD_MODEL_KEY);
       localStorage.removeItem(BG_DOWNLOAD_MODEL_NAME_KEY);
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -251,18 +176,6 @@ function OnboardingPage() {
           </div>
         </div>
       </div>
-      {(downloading || downloadComplete) && !dismissed && (
-        <DownloadProgressPopup
-          modelName={
-            catalog?.models.find((m) => m.id === selectedModelId)?.name ??
-            'AI model'
-          }
-          downloaded={downloadProgress?.downloaded ?? 0}
-          total={downloadProgress?.total ?? 0}
-          isComplete={downloadComplete}
-          onClose={handleClose}
-        />
-      )}
     </div>
   );
 }

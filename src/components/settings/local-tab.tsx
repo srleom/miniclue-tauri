@@ -1,5 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { listen } from '@tauri-apps/api/event';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   CheckCircle2,
@@ -11,7 +10,11 @@ import {
 } from 'lucide-react';
 import * as React from 'react';
 import { toast } from 'sonner';
-import { BG_DOWNLOAD_MODEL_NAME_KEY } from '@/components/onboarding/constants';
+import {
+  useDownload,
+  useDownloadState,
+} from '@/components/providers/download-provider';
+import { Progress } from '@/components/ui/progress';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,23 +28,14 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
+import { useLocalModelCatalog } from '@/hooks/use-local-model-catalog';
 import {
   deleteLocalModel,
   getLlamaServerStatus,
-  getLocalModelStatus,
-  getModelCatalog,
-  getRecommendedModelId,
   listModels,
   setLocalChatEnabled,
 } from '@/lib/tauri';
-import type {
-  DownloadProgress,
-  LlamaStatus,
-  LocalModelStatus,
-  ModelCatalog,
-} from '@/lib/types';
 import { formatBytes } from '@/lib/utils';
 
 function ServerStatusBadge({ status }: { status: string }) {
@@ -83,102 +77,67 @@ function ServerStatusBadge({ status }: { status: string }) {
 
 export function LocalTab() {
   const queryClient = useQueryClient();
-  const [catalog, setCatalog] = React.useState<ModelCatalog | null>(null);
-  const [recommendedId, setRecommendedId] = React.useState<string | null>(null);
-  const [statuses, setStatuses] = React.useState<
-    Record<string, LocalModelStatus>
-  >({});
-  const [serverStatus, setServerStatus] = React.useState<LlamaStatus | null>(
-    null
-  );
-  const [downloading, setDownloading] = React.useState<
-    Record<string, { downloaded: number; total: number }>
-  >({});
-  // Set of model IDs that are currently enabled in the selector
-  const [enabledModelIds, setEnabledModelIds] = React.useState<Set<string>>(
-    new Set()
-  );
+  const { startDownload } = useDownload();
+  const {
+    activeModelId: dlModelId,
+    activeDownloaded: dlDownloaded,
+    activeTotal: dlTotal,
+  } = useDownloadState();
+  const anyModelDownloading = dlModelId !== null;
+
+  // Shared hooks — catalog/statuses
+  const {
+    catalog,
+    recommendedId,
+    statuses,
+    isLoading,
+    loadError,
+    refreshStatus,
+  } = useLocalModelCatalog();
+
+  // Settings-specific queries
+  const modelsQuery = useQuery({
+    queryKey: ['models'],
+    queryFn: listModels,
+  });
+
+  const serverStatusQuery = useQuery({
+    queryKey: ['llamaServerStatus'],
+    queryFn: getLlamaServerStatus,
+    // Auto-poll every 2 s while the server is warming up; stop once stable
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data) return false;
+      return data.chat === 'Starting' || data.embed === 'Starting'
+        ? 2000
+        : false;
+    },
+  });
+
+  const serverStatus = serverStatusQuery.data ?? null;
+
+  const enabledModelIds = React.useMemo(() => {
+    const localProvider = modelsQuery.data?.providers.find(
+      (p) => p.provider === 'local'
+    );
+    return new Set(
+      (localProvider?.models ?? []).map((m) =>
+        m.id.startsWith('local:') ? m.id.slice('local:'.length) : m.id
+      )
+    );
+  }, [modelsQuery.data]);
+
   const [deletingModelId, setDeletingModelId] = React.useState<string | null>(
     null
   );
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
-  // Load data on mount
-  React.useEffect(() => {
-    async function load() {
-      try {
-        const [cat, recId, srvStatus, modelsData] = await Promise.all([
-          getModelCatalog(),
-          getRecommendedModelId(),
-          getLlamaServerStatus(),
-          listModels(),
-        ]);
-        setCatalog(cat);
-        setRecommendedId(recId);
-        setServerStatus(srvStatus);
-
-        // Derive the set of enabled model IDs from what list_models returns
-        // (the "local" provider contains exactly the enabled ones)
-        const localProvider = modelsData.providers.find(
-          (p) => p.provider === 'local'
-        );
-        const enabledIds = new Set(
-          (localProvider?.models ?? []).map((m) =>
-            // strip "local:" prefix to get the raw model ID
-            m.id.startsWith('local:') ? m.id.slice('local:'.length) : m.id
-          )
-        );
-        setEnabledModelIds(enabledIds);
-
-        // Load per-model statuses
-        const statusMap: Record<string, LocalModelStatus> = {};
-        await Promise.all(
-          cat.models.map(async (m) => {
-            const s = await getLocalModelStatus(m.id);
-            statusMap[m.id] = s;
-          })
-        );
-        setStatuses(statusMap);
-      } catch (e) {
-        setError(String(e));
-      }
-    }
-    void load();
-  }, []);
-
-  // Listen for download-progress events
-  React.useEffect(() => {
-    const unlisten = listen<DownloadProgress>(
-      'model-download-progress',
-      (event) => {
-        const { modelId, downloadedBytes, totalBytes } = event.payload;
-        setDownloading((prev) => ({
-          ...prev,
-          [modelId]: { downloaded: downloadedBytes, total: totalBytes },
-        }));
-      }
-    );
-    return () => {
-      void unlisten.then((fn) => fn());
-    };
-  }, []);
-
-  // Shared side-effects for enabling/disabling a model (no busy/toast management)
+  // Shared side-effects for enabling/disabling a model
   async function applyEnabled(modelId: string, enabled: boolean) {
     await setLocalChatEnabled(enabled, modelId);
-    setEnabledModelIds((prev) => {
-      const next = new Set(prev);
-      if (enabled) {
-        next.add(modelId);
-      } else {
-        next.delete(modelId);
-      }
-      return next;
-    });
     await queryClient.invalidateQueries({ queryKey: ['models'] });
-    const srvStatus = await getLlamaServerStatus();
-    setServerStatus(srvStatus);
+    await queryClient.invalidateQueries({ queryKey: ['llamaServerStatus'] });
   }
 
   async function handleDownload(modelId: string) {
@@ -186,24 +145,14 @@ export function LocalTab() {
       catalog?.models.find((m) => m.id === modelId)?.name ?? 'AI model';
     setBusy(true);
     setError(null);
-    localStorage.setItem(BG_DOWNLOAD_MODEL_NAME_KEY, modelName);
     try {
-      // Start download (fires progress events; returns path when done)
-      const { downloadLocalModel } = await import('@/lib/tauri');
-      await downloadLocalModel(modelId);
-      // Refresh disk status then auto-enable
-      const s = await getLocalModelStatus(modelId);
-      setStatuses((prev) => ({ ...prev, [modelId]: s }));
-      setDownloading((prev) => {
-        const next = { ...prev };
-        delete next[modelId];
-        return next;
-      });
-      await applyEnabled(modelId, true);
-      toast.success(`${modelName} downloaded and enabled`);
+      // startDownload shows the popup, calls setLocalChatEnabled, and
+      // invalidates ['models'] + ['localModelStatus', modelId]
+      await startDownload(modelId, modelName);
+      await refreshStatus(modelId);
+      await queryClient.invalidateQueries({ queryKey: ['llamaServerStatus'] });
     } catch (e) {
       setError(`Download failed: ${String(e)}`);
-      localStorage.removeItem(BG_DOWNLOAD_MODEL_NAME_KEY);
     } finally {
       setBusy(false);
     }
@@ -214,15 +163,9 @@ export function LocalTab() {
     setError(null);
     try {
       await deleteLocalModel(modelId);
-      const s = await getLocalModelStatus(modelId);
-      setStatuses((prev) => ({ ...prev, [modelId]: s }));
-      // Remove from enabled set if it was there
-      setEnabledModelIds((prev) => {
-        const next = new Set(prev);
-        next.delete(modelId);
-        return next;
-      });
+      await refreshStatus(modelId);
       await queryClient.invalidateQueries({ queryKey: ['models'] });
+      await queryClient.invalidateQueries({ queryKey: ['llamaServerStatus'] });
       const modelName =
         catalog?.models.find((m) => m.id === modelId)?.name ?? modelId;
       toast.success(`${modelName} deleted`);
@@ -254,13 +197,17 @@ export function LocalTab() {
     }
   }
 
-  if (!catalog) {
+  if (isLoading || modelsQuery.isPending || serverStatusQuery.isPending) {
     return (
       <div className="flex items-center justify-center py-12">
         <span className="text-muted-foreground text-sm">Loading…</span>
       </div>
     );
   }
+
+  if (!catalog) return null;
+
+  const displayError = loadError ?? error;
 
   return (
     <div>
@@ -325,9 +272,9 @@ export function LocalTab() {
           {catalog.models.map((model) => {
             const st = statuses[model.id];
             const isDownloaded = st?.isDownloaded ?? false;
-            const dlProgress = downloading[model.id];
             const isRec = model.id === recommendedId;
             const isEnabled = enabledModelIds.has(model.id);
+            const isThisModelDownloading = dlModelId === model.id;
 
             return (
               <div
@@ -356,18 +303,24 @@ export function LocalTab() {
                     </p>
                   </div>
 
-                  {/* Top-right: download button for not-yet-downloaded models */}
+                  {/* Download button for not-yet-downloaded models */}
                   {!isDownloaded && (
                     <div className="shrink-0">
-                      {dlProgress ? (
-                        <Button variant="outline" size="sm" disabled>
+                      {isThisModelDownloading ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled
+                          className="gap-1.5"
+                        >
+                          <span className="size-3 animate-spin rounded-full border border-current border-t-transparent" />
                           Downloading…
                         </Button>
                       ) : (
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={busy}
+                          disabled={anyModelDownloading || busy}
                           onClick={() => handleDownload(model.id)}
                           className="gap-1.5"
                         >
@@ -379,22 +332,17 @@ export function LocalTab() {
                   )}
                 </div>
 
-                {/* Download progress bar */}
-                {dlProgress && (
+                {/* Inline download progress bar */}
+                {isThisModelDownloading && (
                   <div className="mt-3 space-y-1">
                     <Progress
                       value={
-                        dlProgress.total > 0
-                          ? (dlProgress.downloaded / dlProgress.total) * 100
-                          : undefined
+                        dlTotal > 0 ? (dlDownloaded / dlTotal) * 100 : undefined
                       }
                       className="h-1.5"
                     />
                     <p className="text-muted-foreground text-xs">
-                      {formatBytes(dlProgress.downloaded)} /{' '}
-                      {dlProgress.total > 0
-                        ? formatBytes(dlProgress.total)
-                        : '…'}
+                      {formatBytes(dlDownloaded)} / {formatBytes(dlTotal)}
                     </p>
                   </div>
                 )}
@@ -419,7 +367,7 @@ export function LocalTab() {
                         variant="ghost"
                         size="icon"
                         className="size-7"
-                        disabled={busy}
+                        disabled={anyModelDownloading || busy}
                         onClick={() => setDeletingModelId(model.id)}
                         aria-label={`Delete ${model.name}`}
                       >
@@ -435,7 +383,7 @@ export function LocalTab() {
                         <Switch
                           id={`enable-${model.id}`}
                           checked={isEnabled}
-                          disabled={busy}
+                          disabled={anyModelDownloading || busy}
                           onCheckedChange={(v) =>
                             handleToggleEnabled(model.id, v)
                           }
@@ -487,10 +435,10 @@ export function LocalTab() {
         </AlertDialog>
 
         {/* Error display */}
-        {error && (
+        {displayError && (
           <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3">
             <AlertCircle className="mt-1 size-4 shrink-0 text-destructive" />
-            <p className="text-sm text-destructive">{error}</p>
+            <p className="text-sm text-destructive">{displayError}</p>
           </div>
         )}
       </div>
