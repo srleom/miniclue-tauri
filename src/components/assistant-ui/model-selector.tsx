@@ -132,7 +132,7 @@ export function ModelSelector({
           <SelectSeparator />
           <button
             type="button"
-            className="flex w-full items-start  gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent"
+            className="flex w-full gap-2 rounded-sm px-2 py-1.5 text-xs text-foreground hover:bg-accent"
             onMouseDown={(e) => {
               e.preventDefault();
               setSettingsOpen(true);

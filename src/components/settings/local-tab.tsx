@@ -269,7 +269,7 @@ export function LocalTab() {
           </div>
 
           <div className="bg-card border-border/60 rounded-lg border p-4">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex justify-between gap-4">
               <div className="min-w-0 flex-1">
                 <p className="font-mono text-sm font-medium">
                   nomic-embed-text-v1.5
