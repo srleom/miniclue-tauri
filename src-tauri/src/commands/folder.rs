@@ -72,7 +72,24 @@ pub async fn update_folder(
 #[tauri::command]
 #[specta::specta]
 pub async fn delete_folder(state: State<'_, AppState>, folder_id: String) -> Result<(), ApiError> {
+    let doc_ids = db::document::get_document_ids_by_folder(&state.db, &folder_id).await?;
+
     db::folder::delete_folder(&state.db, &folder_id).await?;
+
+    for doc_id in doc_ids {
+        let document_dir = state.app_data_dir.join("documents").join(&doc_id);
+        if document_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&document_dir) {
+                log::warn!(
+                    "Failed to delete document directory {}: {}",
+                    document_dir.display(),
+                    e
+                );
+            } else {
+                log::info!("Deleted document directory: {}", document_dir.display());
+            }
+        }
+    }
 
     Ok(())
 }

@@ -98,6 +98,17 @@ pub async fn update_document(
     q.fetch_one(pool).await
 }
 
+pub async fn get_document_ids_by_folder(
+    pool: &SqlitePool,
+    folder_id: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+    let rows = sqlx::query_scalar("SELECT id FROM documents WHERE folder_id = ?")
+        .bind(folder_id)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows)
+}
+
 pub async fn delete_document(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM documents WHERE id = ?")
         .bind(id)
