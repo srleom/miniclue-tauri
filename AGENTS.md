@@ -213,7 +213,7 @@ export const Route = createFileRoute('/_app/your-route')({
 
 | Resource | Path |
 |----------|------|
-| App data root (macOS) | `~/Library/Application Support/com.miniclue.app/` |
+| App data root (macOS) | `~/Library/Application Support/miniclue/` |
 | PDFs | `{app_data}/documents/{document_id}/original.pdf` |
 | Config (API keys) | `{app_data}/config.json` |
 | SQLite DB | `{app_data}/miniclue.db` |

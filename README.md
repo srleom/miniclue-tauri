@@ -376,9 +376,9 @@ All app data is stored locally in the platform-specific app data directory:
 
 | Platform | Path                                                    |
 | -------- | ------------------------------------------------------- |
-| macOS    | `~/Library/Application Support/com.miniclue.app/`       |
-| Windows  | `C:\Users\{username}\AppData\Roaming\com.miniclue.app\` |
-| Linux    | `~/.local/share/com.miniclue.app/`                      |
+| macOS    | `~/Library/Application Support/miniclue/`       |
+| Windows  | `C:\Users\{username}\AppData\Roaming\miniclue\` |
+| Linux    | `~/.local/share/miniclue/`                      |
 
 ### Directory Structure
 
