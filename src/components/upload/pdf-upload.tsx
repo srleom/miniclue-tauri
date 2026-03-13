@@ -160,7 +160,7 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
           onClick={() => !isUploading && openFileBrowser()}
           disabled={isUploading}
           className={cn(
-            'border-muted-foreground/20 flex min-h-[13em] w-full cursor-pointer select-none items-center justify-center rounded-xl border-2 border-dashed transition-colors disabled:pointer-events-none disabled:opacity-50 md:min-h-[15em]',
+            'border-muted-foreground/20 flex min-h-[15em] w-full cursor-pointer select-none items-center justify-center rounded-xl border-2 border-dashed transition-colors disabled:pointer-events-none disabled:opacity-50 md:min-h-[18em]',
             isDragging
               ? 'border-primary/40 bg-primary/5'
               : 'hover:border-muted-foreground/35 hover:bg-muted/30'

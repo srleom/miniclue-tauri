@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useFoldersWithDocuments } from '@/hooks/use-queries';
-import { PdfUpload } from '@/components/upload/pdf-upload';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Skeleton } from '@/components/ui/skeleton';
+import { PdfUpload } from '@/components/upload/pdf-upload';
+import { useFoldersWithDocuments } from '@/hooks/use-queries';
 
 export const Route = createFileRoute('/_app/')({
   component: HomePage,
@@ -41,7 +41,7 @@ function HomePage() {
           </p>
         ) : (
           <div className="w-full max-w-2xl">
-            <div className="flex gap-2 justify-center items-center mb-8">
+            <div className="flex gap-2 justify-center items-center mb-10">
               <img src="/icon.svg" alt="Logo" className="size-10" />
               <h1 className="text-4xl font-medium tracking-tight">
                 {greeting}
