@@ -23,7 +23,7 @@ function HomePage() {
 
   return (
     <>
-      <header className="flex h-14 shrink-0 items-center gap-2">
+      <header className="relative z-10 flex h-14 shrink-0 items-center gap-2">
         <div className="flex items-center gap-2 px-4">
           <SidebarTrigger className="-ml-1" />
         </div>
