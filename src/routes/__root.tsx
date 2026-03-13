@@ -4,7 +4,7 @@ import {
   Outlet,
   redirect,
 } from '@tanstack/react-router';
-import { ONBOARDING_DONE_KEY } from './onboarding';
+import { ONBOARDING_DONE_KEY } from '@/components/onboarding/constants';
 
 interface RouterContext {
   queryClient: QueryClient;

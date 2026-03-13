@@ -1,6 +1,5 @@
-import { listen } from '@tauri-apps/api/event';
 import { useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { listen } from '@tauri-apps/api/event';
 import {
   AlertCircle,
   CheckCircle2,
@@ -11,6 +10,18 @@ import {
   Trash2,
 } from 'lucide-react';
 import * as React from 'react';
+import { toast } from 'sonner';
+import { BG_DOWNLOAD_MODEL_NAME_KEY } from '@/components/onboarding/constants';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -31,18 +42,7 @@ import type {
   LocalModelStatus,
   ModelCatalog,
 } from '@/lib/types';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const gb = bytes / (1024 * 1024 * 1024);
-  if (gb >= 1) return `${gb.toFixed(1)} GB`;
-  const mb = bytes / (1024 * 1024);
-  return `${mb.toFixed(0)} MB`;
-}
+import { formatBytes } from '@/lib/utils';
 
 function ServerStatusBadge({ status }: { status: string }) {
   const lower = status.toLowerCase();
@@ -97,6 +97,9 @@ export function LocalTab() {
   // Set of model IDs that are currently enabled in the selector
   const [enabledModelIds, setEnabledModelIds] = React.useState<Set<string>>(
     new Set()
+  );
+  const [deletingModelId, setDeletingModelId] = React.useState<string | null>(
+    null
   );
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -161,14 +164,34 @@ export function LocalTab() {
     };
   }, []);
 
+  // Shared side-effects for enabling/disabling a model (no busy/toast management)
+  async function applyEnabled(modelId: string, enabled: boolean) {
+    await setLocalChatEnabled(enabled, modelId);
+    setEnabledModelIds((prev) => {
+      const next = new Set(prev);
+      if (enabled) {
+        next.add(modelId);
+      } else {
+        next.delete(modelId);
+      }
+      return next;
+    });
+    await queryClient.invalidateQueries({ queryKey: ['models'] });
+    const srvStatus = await getLlamaServerStatus();
+    setServerStatus(srvStatus);
+  }
+
   async function handleDownload(modelId: string) {
+    const modelName =
+      catalog?.models.find((m) => m.id === modelId)?.name ?? 'AI model';
     setBusy(true);
     setError(null);
+    localStorage.setItem(BG_DOWNLOAD_MODEL_NAME_KEY, modelName);
     try {
       // Start download (fires progress events; returns path when done)
       const { downloadLocalModel } = await import('@/lib/tauri');
       await downloadLocalModel(modelId);
-      // Refresh status
+      // Refresh disk status then auto-enable
       const s = await getLocalModelStatus(modelId);
       setStatuses((prev) => ({ ...prev, [modelId]: s }));
       setDownloading((prev) => {
@@ -176,8 +199,11 @@ export function LocalTab() {
         delete next[modelId];
         return next;
       });
+      await applyEnabled(modelId, true);
+      toast.success(`${modelName} downloaded and enabled`);
     } catch (e) {
       setError(`Download failed: ${String(e)}`);
+      localStorage.removeItem(BG_DOWNLOAD_MODEL_NAME_KEY);
     } finally {
       setBusy(false);
     }
@@ -212,22 +238,10 @@ export function LocalTab() {
     setBusy(true);
     setError(null);
     try {
-      await setLocalChatEnabled(enabled, modelId);
-      setEnabledModelIds((prev) => {
-        const next = new Set(prev);
-        if (enabled) {
-          next.add(modelId);
-        } else {
-          next.delete(modelId);
-        }
-        return next;
-      });
-      await queryClient.invalidateQueries({ queryKey: ['models'] });
+      await applyEnabled(modelId, enabled);
       const modelName =
         catalog?.models.find((m) => m.id === modelId)?.name ?? modelId;
       toast.success(`${modelName} ${enabled ? 'enabled' : 'disabled'}`);
-      const srvStatus = await getLlamaServerStatus();
-      setServerStatus(srvStatus);
     } catch (e) {
       toast.error(
         `Failed to ${enabled ? 'enable' : 'disable'} local AI: ${String(e)}`
@@ -406,7 +420,7 @@ export function LocalTab() {
                         size="icon"
                         className="size-7"
                         disabled={busy}
-                        onClick={() => handleDelete(model.id)}
+                        onClick={() => setDeletingModelId(model.id)}
                         aria-label={`Delete ${model.name}`}
                       >
                         <Trash2 className="size-3.5 text-destructive" />
@@ -435,6 +449,42 @@ export function LocalTab() {
             );
           })}
         </section>
+
+        {/* Delete confirmation dialog */}
+        <AlertDialog
+          open={deletingModelId !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeletingModelId(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete model?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete{' '}
+                <strong>
+                  {catalog.models.find((m) => m.id === deletingModelId)?.name ??
+                    deletingModelId}
+                </strong>{' '}
+                from your device. You can re-download it later.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-white hover:bg-destructive/90"
+                onClick={() => {
+                  if (deletingModelId) {
+                    void handleDelete(deletingModelId);
+                    setDeletingModelId(null);
+                  }
+                }}
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Error display */}
         {error && (

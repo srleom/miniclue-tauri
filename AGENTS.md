@@ -156,6 +156,7 @@ MiniClue uses **sqlx's migration system** for versioned schema evolution.
 
    **If changing frontend:**
    - Implement UI using TanStack Router + Query patterns
+   - Use shadcn/ui components
    - Use invoke wrappers from `src/lib/tauri.ts`
    - Define manual browser test scenarios for verification
 

@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Cpu, Plus, Trash2, X } from 'lucide-react';
+import { Check, ChevronRight, Cpu, Plus, Trash2, X } from 'lucide-react';
 import type React from 'react';
 import {
   providerDisplayNames,
@@ -133,7 +133,7 @@ export function ProviderCard({
       <CollapsibleTrigger asChild>
         <Button
           variant="ghost"
-          className="group hover:bg-accent/50 flex min-h-[68px] w-full items-center justify-between p-4 text-left transition-colors"
+          className="group hover:bg-accent/50 flex min-h-[68px] w-full items-center justify-between p-4 text-left transition-colors rounded-b-none rounded-t-lg"
         >
           <span className="flex items-center gap-3">
             {logo}
@@ -155,7 +155,7 @@ export function ProviderCard({
                 {activeCount} of {totalCount} active
               </>
             )}
-            <ChevronDown className="h-4 w-4 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+            <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]:rotate-90" />
           </span>
         </Button>
       </CollapsibleTrigger>
