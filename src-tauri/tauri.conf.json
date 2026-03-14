@@ -49,15 +49,10 @@
     "resources": [
       "resources/pdfium/**/*",
       "resources/models/**/*",
-      "binaries/*.so*"
+      "binaries/*.so*",
+      "binaries/*.dylib",
+      "binaries/*.dll"
     ],
-    "linux": {
-      "appimage": {
-        "files": {
-          "binaries/": "binaries/"
-        }
-      }
-    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

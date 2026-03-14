@@ -57,6 +57,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NO_STRIP: true
+          LD_LIBRARY_PATH: ${{ github.workspace }}/src-tauri/binaries:$LD_LIBRARY_PATH
         with:
           tagName: app-v__VERSION__
           releaseName: 'App v__VERSION__'
