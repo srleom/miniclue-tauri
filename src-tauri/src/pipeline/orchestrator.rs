@@ -196,7 +196,7 @@ pub async fn process_document(
         embeddings_for_db.push((emb.chunk_id, page_id.0, emb.page_number, emb.vector));
     }
 
-    db::embedding::save_embeddings(db, &embeddings_for_db).await?;
+    db::embedding::save_embeddings(db, &embeddings_for_db, "nomic-embed-text-v1.5").await?;
 
     // Tag the document with the embedding model used
     sqlx::query("UPDATE documents SET embedding_model = 'nomic-embed-text-v1.5' WHERE id = ?")
