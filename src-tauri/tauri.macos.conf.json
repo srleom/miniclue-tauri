@@ -1,5 +1,5 @@
 {
   "bundle": {
-    "resources": ["binaries/*.dylib"]
+    "resources": ["resources/pdfium/**/*", "resources/models/**/*", "binaries/*.dylib"]
   }
 }
