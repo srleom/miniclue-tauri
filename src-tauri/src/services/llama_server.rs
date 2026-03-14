@@ -406,6 +406,7 @@ fn resolve_embed_model_path(app_handle: &AppHandle) -> Result<String, String> {
         .map_err(|e| format!("Failed to get resource dir: {e}"))?;
 
     let model_path = resource_dir
+        .join("resources")
         .join("models")
         .join("nomic-embed-text-v1.5.Q5_K_M.gguf");
 

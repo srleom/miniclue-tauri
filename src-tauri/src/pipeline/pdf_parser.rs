@@ -176,21 +176,13 @@ fn candidate_pdfium_paths(app_handle: &AppHandle) -> Vec<PathBuf> {
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
         candidates.push(
             resource_dir
+                .join("resources")
                 .join("pdfium")
                 .join(target_subdir)
                 .join(library_filename),
         );
         candidates.push(resource_dir.join(library_filename));
     }
-
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    candidates.push(
-        manifest_dir
-            .join("resources")
-            .join("pdfium")
-            .join(target_subdir)
-            .join(library_filename),
-    );
 
     if let Ok(current_dir) = std::env::current_dir() {
         candidates.push(current_dir.join(library_filename));
