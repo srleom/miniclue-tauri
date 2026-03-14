@@ -24,7 +24,10 @@ const MAX_CHUNK_TOKENS: usize = 450;
 const OVERLAP_TOKENS: usize = 50;
 
 /// Chunk text using token-based sliding window
-/// - Max chunk size: 450 tokens (keeps inputs well under embed server's 512-token batch limit)
+/// - Max chunk size: 450 cl100k tokens. Note: the embed server uses nomic-embed's BERT
+///   WordPiece tokenizer, which can produce more tokens than cl100k BPE for the same text
+///   (especially PDFs with numbers, formulas, or special characters). The embed server's
+///   physical batch size (`--ubatch-size 2048`) provides ample headroom for this variance.
 /// - Overlap: 50 tokens
 pub fn chunk_pages(pages: &[(i64, String)]) -> Result<Vec<ChunkedPage>, ChunkerError> {
     let bpe = cl100k_base().map_err(|e| ChunkerError::TokenizationError(e.to_string()))?;

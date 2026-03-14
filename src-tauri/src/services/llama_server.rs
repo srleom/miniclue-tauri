@@ -244,6 +244,8 @@ async fn spawn_embed_server(
         "8192".to_string(),
         "--batch-size".to_string(),
         "2048".to_string(),
+        "--ubatch-size".to_string(),
+        "2048".to_string(),
         "--rope-scaling".to_string(),
         "yarn".to_string(),
         "--rope-freq-scale".to_string(),
