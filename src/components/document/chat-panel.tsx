@@ -79,12 +79,31 @@ export function ChatPanel({ documentId, status }: ChatPanelProps) {
 
   const { selectedModel, setSelectedModel } = useSelectedModel();
 
-  // Once we have a default model (including empty string), seed it if not yet set
+  // Once we have a default model (including empty string), seed it if not yet set.
+  // Also resets the stored model if it is no longer in the enabled list (e.g. was
+  // disabled after being saved to localStorage).
   useEffect(() => {
-    if (defaultModel !== null && selectedModel === null) {
+    if (defaultModel === null) return; // still loading
+
+    // Seed on first load
+    if (selectedModel === null) {
+      setSelectedModel(defaultModel);
+      return;
+    }
+
+    // Auto-select when models first become available (selectedModel '' = no models existed)
+    // or reset if the stored model was disabled/removed from the enabled list
+    const enabledIds =
+      modelsData?.providers.flatMap((p) =>
+        p.models.filter((m) => m.enabled).map((m) => m.id)
+      ) ?? [];
+    if (
+      (selectedModel === '' && defaultModel !== '') ||
+      (selectedModel !== '' && !enabledIds.includes(selectedModel))
+    ) {
       setSelectedModel(defaultModel);
     }
-  }, [defaultModel, selectedModel, setSelectedModel]);
+  }, [defaultModel, selectedModel, setSelectedModel, modelsData]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const processingState = isProcessingStatus(status)
     ? PROCESSING_STATUS_META[status]

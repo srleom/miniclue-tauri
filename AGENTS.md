@@ -54,9 +54,11 @@ Always follow this order when adding a feature:
 
 3. **New mutation?** After writing it, grep the codebase for related `queryKey` usages and call `invalidateQueries` for every key the mutation affects, including inside `DownloadProvider`.
 
-4. **Frontend data fetching?** Always TanStack Query. Never raw `useState` + `useEffect` for server state.
+4. **Re-render check?** After any data change, think about what else on screen reflects that data. Look for components reading the same query keys, shared context, or local state derived from server data. If they won't automatically re-render, either invalidate their queries or update the shared source.
 
-5. **Verify:** `bun run check:all` — fix all errors before finishing.
+5. **Frontend data fetching?** Always TanStack Query. Never raw `useState` + `useEffect` for server state.
+
+6. **Verify:** `bun run check:all` — fix all errors before finishing.
 
 ---
 
