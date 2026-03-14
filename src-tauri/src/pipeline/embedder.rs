@@ -143,7 +143,20 @@ pub async fn generate_embeddings(
 /// Generate a single query embedding.
 ///
 /// Adds the `"search_query: "` prefix required by nomic-embed-text-v1.5.
+/// Queries longer than 2000 characters are truncated with a warning — this is a
+/// defensive guard against pathological inputs; typical search queries are well
+/// under this limit.
 pub async fn generate_query_embedding(query: &str) -> Result<Vec<f32>, EmbedderError> {
+    const MAX_QUERY_CHARS: usize = 2000;
+    let query = if query.len() > MAX_QUERY_CHARS {
+        log::warn!(
+            "Query truncated from {} to {MAX_QUERY_CHARS} characters before embedding",
+            query.len()
+        );
+        &query[..MAX_QUERY_CHARS]
+    } else {
+        query
+    };
     let client = embed_client();
     let input = format!("search_query: {query}");
     let mut vectors = embed_batch(client, vec![input]).await?;
