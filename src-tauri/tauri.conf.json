@@ -48,10 +48,7 @@
     "externalBin": ["binaries/llama-server"],
     "resources": [
       "resources/pdfium/**/*",
-      "resources/models/**/*",
-      "binaries/*.so*",
-      "binaries/*.dylib",
-      "binaries/*.dll"
+      "resources/models/**/*"
     ],
     "icon": [
       "icons/32x32.png",
