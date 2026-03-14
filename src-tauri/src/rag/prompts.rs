@@ -41,7 +41,7 @@ Answer the user's question based on the provided document content. Be accurate, 
 
 ### CITATIONS
 You MUST cite sources inline throughout your response. This is mandatory.
-- After every sentence or claim from the document, append [Page N] where N is the `id` of the `<page>` element in the `<document_context>`.
+- After every sentence or claim from the document, append [Page N] where N is the `id` of the `<page>` element in the `<document_context>`. If multiple pages contribute to a single claim, use separate bracketed citations — e.g. [Page 1][Page 2] — never combine them as [Page 1, 2] or [Pages 1-2].
 - If a paragraph draws from multiple pages, cite each one after the relevant sentence.
 - When the user's message contains `@N` (e.g. `@5`), they are referencing page N explicitly — always include [Page N] in your response and address that page's content.
 - Err on the side of over-citing. Do NOT cite pages absent from `<document_context>`."#;
