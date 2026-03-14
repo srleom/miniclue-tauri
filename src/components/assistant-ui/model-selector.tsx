@@ -3,6 +3,7 @@ import { Plus, Sparkle } from 'lucide-react';
 import * as React from 'react';
 import { Fragment } from 'react';
 import { SettingsDialog } from '@/components/settings/settings-dialog';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -74,29 +75,20 @@ export function ModelSelector({
   if (enabledProviders.length === 0) {
     return (
       <>
-        <Select disabled>
-          <SelectTrigger className={className}>
-            <SelectValue placeholder="No models available" />
-          </SelectTrigger>
-          <SelectContent side="top">
-            <SelectSeparator />
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                setSettingsOpen(true);
-              }}
-            >
-              <Plus className="size-3" />
-              Add models
-            </button>
-          </SelectContent>
-        </Select>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="h-7 gap-1.5 text-xs"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Plus className="size-3" />
+          Add models
+        </Button>
         <SettingsDialog
           open={settingsOpen}
           onOpenChange={setSettingsOpen}
-          initialTab="cloud"
+          initialTab="local"
         />
       </>
     );

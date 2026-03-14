@@ -301,7 +301,25 @@ async fn spawn_sidecar(
         }
     };
 
-    #[cfg(not(target_os = "linux"))]
+    // On macOS, set DYLD_LIBRARY_PATH to the bundled binaries directory so the
+    // companion .dylib files (libllama, libggml-*, etc.) can be found.
+    // resource_dir() resolves to src-tauri/ in dev (where binaries/ already lives)
+    // and to Contents/Resources/ in production (where binaries/*.dylib are bundled).
+    #[cfg(target_os = "macos")]
+    let cmd = {
+        let lib_dir = app_handle
+            .path()
+            .resource_dir()
+            .map(|d| d.join("binaries"))
+            .ok();
+        log::debug!("[spawn_sidecar] DYLD_LIBRARY_PATH={:?}", lib_dir);
+        match lib_dir {
+            Some(dir) => sidecar_cmd.args(args).env("DYLD_LIBRARY_PATH", dir),
+            None => sidecar_cmd.args(args),
+        }
+    };
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     let cmd = sidecar_cmd.args(args);
 
     let (rx, child) = cmd

@@ -1,10 +1,10 @@
-import { createFileRoute, Outlet } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { createFileRoute, Outlet } from '@tanstack/react-router';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { AppSidebar } from '../components/layout/app-sidebar';
-import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import { useEffect, useState } from 'react';
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import type { Document, DocumentStatusChangedEvent } from '@/lib/types';
+import { AppSidebar } from '../components/layout/app-sidebar';
 
 export const Route = createFileRoute('/_app')({
   component: AppLayout,

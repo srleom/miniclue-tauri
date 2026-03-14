@@ -228,7 +228,7 @@ export function PdfUpload({ isFolderPage = false, folderId }: PdfUploadProps) {
       </FileUpload>
 
       {/* Upload button */}
-      {isFolderPage && hasFiles && (
+      {hasFiles && (
         <Button
           onClick={handleUpload}
           disabled={isUploading}

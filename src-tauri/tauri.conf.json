@@ -30,6 +30,8 @@
         "font-src": ["'self'", "data:"],
         "connect-src": [
           "'self'",
+          "asset:",
+          "https://asset.localhost",
           "https://*",
           "tauri:"
         ]
@@ -46,7 +48,8 @@
     "externalBin": ["binaries/llama-server"],
     "resources": [
       "resources/pdfium/**/*",
-      "resources/models/**/*"
+      "resources/models/**/*",
+      "binaries/*.dylib"
     ],
     "linux": {
       "appimage": {

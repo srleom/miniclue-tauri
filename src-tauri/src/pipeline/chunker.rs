@@ -73,26 +73,34 @@ fn chunk_text(text: &str, bpe: &tiktoken_rs::CoreBPE) -> Result<Vec<TextChunk>, 
 
     while start_idx < tokens.len() {
         let end_idx = (start_idx + MAX_CHUNK_TOKENS).min(tokens.len());
-        let chunk_tokens = &tokens[start_idx..end_idx];
 
-        // Decode tokens back to text
-        let chunk_text = bpe
-            .decode(chunk_tokens.to_vec())
-            .map_err(|e| ChunkerError::TokenizationError(e.to_string()))?;
+        // BPE tokens can represent partial byte sequences of multibyte Unicode
+        // characters. If the window boundary falls mid-character, decoding the
+        // slice produces invalid UTF-8. Trim one token at a time from the end
+        // until we land on a valid UTF-8 boundary (at most 3–4 retries).
+        let mut adjusted_end = end_idx;
+        let chunk_text = loop {
+            let chunk_tokens = &tokens[start_idx..adjusted_end];
+            match bpe.decode(chunk_tokens.to_vec()) {
+                Ok(text) => break text,
+                Err(_) if adjusted_end > start_idx + 1 => adjusted_end -= 1,
+                Err(e) => return Err(ChunkerError::TokenizationError(e.to_string())),
+            }
+        };
 
         chunks.push(TextChunk {
             text: chunk_text,
-            token_count: chunk_tokens.len() as i64,
+            token_count: (adjusted_end - start_idx) as i64,
             chunk_index,
         });
 
         chunk_index += 1;
 
-        // Move window forward, accounting for overlap
-        if end_idx >= tokens.len() {
+        // Move window forward using the adjusted boundary, accounting for overlap
+        if adjusted_end >= tokens.len() {
             break;
         }
-        start_idx += MAX_CHUNK_TOKENS - OVERLAP_TOKENS;
+        start_idx = adjusted_end.saturating_sub(OVERLAP_TOKENS);
     }
 
     Ok(chunks)

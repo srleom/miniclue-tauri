@@ -56,6 +56,7 @@ interface TiptapPageMentionInputProps {
   className?: string;
   autoFocus?: boolean;
   placeholder?: string;
+  disabled?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +179,7 @@ export function TiptapPageMentionInput({
   className,
   autoFocus,
   placeholder,
+  disabled = false,
 }: TiptapPageMentionInputProps) {
   const { currentPage, totalPages } = usePageNavigation();
   const composerRuntime = useComposerRuntime();
@@ -273,6 +275,12 @@ export function TiptapPageMentionInput({
             submitRef.current?.();
             return true;
           },
+          'Shift-Enter': () => {
+            // Insert a new paragraph (split the current block) instead of a
+            // hard break node, which keeps the paragraph-based line model
+            // consistent with docToPlainText / plainTextToDoc.
+            return this.editor.commands.splitBlock();
+          },
         };
       },
     });
@@ -365,7 +373,10 @@ export function TiptapPageMentionInput({
                 });
                 return true;
               }
-              if (event.key === 'Enter' || event.key === 'Tab') {
+              if (
+                (event.key === 'Enter' && !event.shiftKey) ||
+                event.key === 'Tab'
+              ) {
                 const items = suggestionItemsRef.current;
                 const idx = selectedIndexRef.current;
                 const item = items[idx];
@@ -387,9 +398,10 @@ export function TiptapPageMentionInput({
         horizontalRule: false,
         blockquote: false,
         codeBlock: false,
+        hardBreak: false,
       }),
       Placeholder.configure({
-        placeholder: placeholderRef.current,
+        placeholder: () => placeholderRef.current,
       }),
       citationWithSuggestion,
       SubmitExtension,
@@ -423,6 +435,14 @@ export function TiptapPageMentionInput({
       composerRuntime.setText(plain);
     },
   });
+
+  // Dispatch an empty transaction when placeholder changes so the Placeholder
+  // extension's decoration function re-runs and picks up the new ref value.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: placeholder is intentionally listed as a trigger dep even though it's not read inside the effect body
+  useEffect(() => {
+    if (!editor) return;
+    editor.view.dispatch(editor.view.state.tr);
+  }, [editor, placeholder]);
 
   // ---------------------------------------------------------------------------
   // Runtime → editor sync (loop-free)
@@ -472,10 +492,17 @@ export function TiptapPageMentionInput({
   // ---------------------------------------------------------------------------
 
   return (
-    <div ref={containerRef} className="relative w-full">
+    <div
+      ref={containerRef}
+      className={cn('relative w-full', disabled && 'pointer-events-none')}
+    >
       <EditorContent
         editor={editor}
-        className={cn('tiptap-composer', className)}
+        className={cn(
+          'tiptap-composer',
+          className,
+          disabled && '[&_.ProseMirror]:caret-transparent'
+        )}
       />
 
       {/* Suggestion popup */}

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { DownloadProvider } from './components/providers/download-provider';
 import { ThemeProvider } from './components/providers/theme-provider';
 import { Toaster } from './components/ui/sonner';
 import { ModelProvider } from './lib/model-context';
@@ -39,8 +40,10 @@ ReactDOM.createRoot(rootElement).render(
     <QueryClientProvider client={queryClient}>
       <ModelProvider>
         <ThemeProvider>
-          <Toaster />
-          <RouterProvider router={router} />
+          <DownloadProvider>
+            <Toaster />
+            <RouterProvider router={router} />
+          </DownloadProvider>
         </ThemeProvider>
       </ModelProvider>
     </QueryClientProvider>
