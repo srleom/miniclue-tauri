@@ -8,6 +8,7 @@ import {
   ThreadPrimitive,
 } from '@assistant-ui/react';
 import {
+  AlertCircle,
   ArrowDownIcon,
   ArrowUpIcon,
   CheckIcon,
@@ -23,15 +24,21 @@ import { PageLink } from '@/components/assistant-ui/page-link';
 import { TiptapPageMentionInput } from '@/components/assistant-ui/tiptap-page-mention-input';
 import { ToolFallback } from '@/components/assistant-ui/tool-fallback';
 import { TooltipIconButton } from '@/components/assistant-ui/tooltip-icon-button';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface ThreadProps {
   selectedModel: string;
   onModelChange: (model: string) => void;
+  processingFailed?: boolean;
 }
 
-export const Thread: FC<ThreadProps> = ({ selectedModel, onModelChange }) => {
+export const Thread: FC<ThreadProps> = ({
+  selectedModel,
+  onModelChange,
+  processingFailed,
+}) => {
   return (
     <ThreadPrimitive.Root
       className="aui-root aui-thread-root @container flex h-full flex-col bg-background"
@@ -43,9 +50,13 @@ export const Thread: FC<ThreadProps> = ({ selectedModel, onModelChange }) => {
         turnAnchor="top"
         className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth px-4 pt-4"
       >
-        <AuiIf condition={(s) => s.thread.isEmpty}>
-          <ThreadWelcome />
-        </AuiIf>
+        {processingFailed ? (
+          <FailedBanner />
+        ) : (
+          <AuiIf condition={(s) => s.thread.isEmpty}>
+            <ThreadWelcome />
+          </AuiIf>
+        )}
 
         <ThreadPrimitive.Messages
           components={{
@@ -60,6 +71,7 @@ export const Thread: FC<ThreadProps> = ({ selectedModel, onModelChange }) => {
           <Composer
             selectedModel={selectedModel}
             onModelChange={onModelChange}
+            processingFailed={processingFailed}
           />
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
@@ -98,19 +110,40 @@ const ThreadWelcome: FC = () => {
   );
 };
 
+const FailedBanner: FC = () => {
+  return (
+    <div className="mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col items-center justify-center gap-3 px-4 text-center">
+      <Badge
+        variant="outline"
+        className="gap-1.5 border-red-300/70 bg-red-100 text-red-700 dark:border-red-800 dark:bg-red-950/60 dark:text-red-300"
+      >
+        <AlertCircle className="size-3" />
+        Processing Failed
+      </Badge>
+      <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
+        This document couldn't be processed. Please delete it and re-upload to
+        try again.
+      </p>
+    </div>
+  );
+};
+
 const Composer: FC<{
   selectedModel: string;
   onModelChange: (model: string) => void;
-}> = ({ selectedModel, onModelChange }) => {
-  const disabled = selectedModel === '';
+  processingFailed?: boolean;
+}> = ({ selectedModel, onModelChange, processingFailed }) => {
+  const disabled = selectedModel === '' || !!processingFailed;
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
       <ComposerPrimitive.AttachmentDropzone className="aui-composer-attachment-dropzone flex w-full flex-col rounded-2xl border border-input bg-background px-1 pt-2 outline-none transition-shadow has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50">
         <TiptapPageMentionInput
           placeholder={
-            disabled
-              ? 'No model available. Add one below to start chatting.'
-              : 'Send a message... (type @ to cite pages)'
+            processingFailed
+              ? 'Document failed to process. Please delete and re-upload.'
+              : disabled
+                ? 'No model available. Add one below to start chatting.'
+                : 'Send a message... (type @ to cite pages)'
           }
           className="aui-composer-input mb-1 max-h-32 min-h-14 overflow-y-auto w-full resize-none bg-transparent px-4 pt-2 pb-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-0"
           autoFocus={!disabled}

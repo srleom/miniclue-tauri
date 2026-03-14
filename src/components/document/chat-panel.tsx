@@ -108,6 +108,7 @@ export function ChatPanel({ documentId, status }: ChatPanelProps) {
   const processingState = isProcessingStatus(status)
     ? PROCESSING_STATUS_META[status]
     : null;
+  const isFailed = status === 'failed';
 
   const { data: chats = [], isLoading: isLoadingChats } = useChats(documentId);
   const createChatMutation = useCreateChat(documentId);
@@ -210,6 +211,7 @@ export function ChatPanel({ documentId, status }: ChatPanelProps) {
             <Thread
               selectedModel={currentModel}
               onModelChange={setSelectedModel}
+              processingFailed={isFailed}
             />
           </ChatRuntimeProvider>
         )}
