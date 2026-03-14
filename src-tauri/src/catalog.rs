@@ -47,7 +47,7 @@ lazy_static::lazy_static! {
     pub static ref DEFAULT_MODELS: std::collections::HashMap<&'static str, Vec<&'static str>> = {
         let mut m = std::collections::HashMap::new();
         m.insert("openai", vec!["gpt-5.1", "gpt-4.1", "gpt-4.1-mini"]);
-        m.insert("gemini", vec!["gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemini-3.1-pro-preview"]);
+        m.insert("gemini", vec!["gemini-3.1-flash-lite-preview", "gemini-3-flash-preview"]);
         m.insert("anthropic", vec!["claude-sonnet-4-5", "claude-haiku-4-5"]);
         m.insert("xai", vec!["grok-4-1-fast-reasoning", "grok-4-1-fast-non-reasoning"]);
         m.insert("deepseek", vec!["deepseek-chat", "deepseek-reasoner"]);
