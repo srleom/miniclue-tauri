@@ -273,6 +273,26 @@ fn get_aux_model_credentials(model: &str, config: &AppConfig) -> Option<ModelCre
     })
 }
 
+fn get_provider_name(model: &str) -> &'static str {
+    if model == "local" || model.starts_with("local:") {
+        "local"
+    } else if model.starts_with("custom:") {
+        "custom"
+    } else if model.starts_with("gemini") || model.starts_with("models/gemini") {
+        "gemini"
+    } else if model.starts_with("gpt") || model.starts_with("o1") {
+        "openai"
+    } else if model.starts_with("claude") {
+        "anthropic"
+    } else if model.starts_with("grok") {
+        "xai"
+    } else if model.starts_with("deepseek") {
+        "deepseek"
+    } else {
+        "unknown"
+    }
+}
+
 fn extract_first_text_from_parts(parts_json: &str) -> String {
     let parts_value: serde_json::Value =
         serde_json::from_str(parts_json).unwrap_or(serde_json::Value::Array(vec![]));
@@ -374,13 +394,21 @@ pub async fn stream_chat(
     // Create message parts as JSON
     let parts = serde_json::json!([{"type": "text", "text": user_message}]).to_string();
 
+    // Include cited_pages in initial metadata; rewritten_query and rag_chunk_ids
+    // will be added via UPDATE after RAG retrieval completes.
+    let user_metadata_initial = serde_json::json!({
+        "cited_pages": request.cited_pages.as_deref().unwrap_or(&[])
+    })
+    .to_string();
+
     sqlx::query(
         "INSERT INTO messages (id, chat_id, role, parts, metadata, created_at)
-         VALUES (?, ?, 'user', ?, '{}', ?)",
+         VALUES (?, ?, 'user', ?, ?, ?)",
     )
     .bind(&user_message_id)
     .bind(&chat_id)
     .bind(&parts)
+    .bind(&user_metadata_initial)
     .bind(&now)
     .execute(&db)
     .await?;
@@ -517,10 +545,31 @@ pub async fn stream_chat(
     }
 
     // 5. Build RAG context (rewritten query used as the final user message for the LLM)
+    //
+    // Capture chunk IDs here — after all cited-page merging and screenshot deduplication —
+    // so both the user and assistant metadata record exactly what context was sent to the LLM.
+    let rag_chunk_ids: Vec<String> = chunks.iter().map(|c| c.chunk_id.clone()).collect();
+
+    // Backfill user message metadata now that we know the rewritten query and retrieved chunks.
+    let user_metadata = serde_json::json!({
+        "rewritten_query": rewritten_query,
+        "rag_chunk_ids": rag_chunk_ids,
+        "cited_pages": request.cited_pages.as_deref().unwrap_or(&[])
+    })
+    .to_string();
+
+    sqlx::query("UPDATE messages SET metadata = ? WHERE id = ?")
+        .bind(&user_metadata)
+        .bind(&user_message_id)
+        .execute(&db)
+        .await?;
+
     let rag_messages =
         rag::build_rag_context(&chunks, &history, &rewritten_query, 3, &cited_screenshots);
 
     // 6. Stream from LLM
+    let stream_start = std::time::Instant::now();
+
     let mut stream = llm::stream_chat(
         rag_messages,
         credentials.model.clone(),
@@ -553,18 +602,29 @@ pub async fn stream_chat(
         }
     }
 
+    let latency_ms = stream_start.elapsed().as_millis() as i64;
+
     // 7. Save assistant message
     let assistant_message_id = Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let assistant_parts = serde_json::json!([{"type": "text", "text": full_response}]).to_string();
 
+    let assistant_metadata = serde_json::json!({
+        "model": credentials.model,
+        "provider": get_provider_name(&model),
+        "rag_chunk_ids": rag_chunk_ids,
+        "latency_ms": latency_ms
+    })
+    .to_string();
+
     sqlx::query(
         "INSERT INTO messages (id, chat_id, role, parts, metadata, created_at)
-         VALUES (?, ?, 'assistant', ?, '{}', ?)",
+         VALUES (?, ?, 'assistant', ?, ?, ?)",
     )
     .bind(&assistant_message_id)
     .bind(&chat_id)
     .bind(&assistant_parts)
+    .bind(&assistant_metadata)
     .bind(&now)
     .execute(&db)
     .await?;

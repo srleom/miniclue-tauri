@@ -57,20 +57,29 @@ pub async fn save_chunks(
 pub async fn save_embeddings(
     db: &SqlitePool,
     embeddings: &[(String, String, i64, Vec<f32>)], // (chunk_id, page_id, page_number, vector)
+    model: &str,
 ) -> Result<(), SqlxError> {
     for (chunk_id, page_id, page_number, vector) in embeddings {
         // Convert vector to blob format for sqlite-vec
         let vector_blob: Vec<u8> = vector.iter().flat_map(|f| f.to_le_bytes()).collect();
 
+        let metadata = serde_json::json!({
+            "dimensions": vector.len(),
+            "provider": "llama_server"
+        })
+        .to_string();
+
         // Save to regular embeddings table
         sqlx::query(
-            "INSERT INTO embeddings (chunk_id, page_id, document_id, page_number, vector, metadata)
-             SELECT ?, ?, document_id, ?, ?, '{}' FROM chunks WHERE id = ?",
+            "INSERT INTO embeddings (chunk_id, page_id, document_id, page_number, vector, metadata, embedding_model)
+             SELECT ?, ?, document_id, ?, ?, ?, ? FROM chunks WHERE id = ?",
         )
         .bind(chunk_id)
         .bind(page_id)
         .bind(page_number)
         .bind(&vector_blob)
+        .bind(&metadata)
+        .bind(model)
         .bind(chunk_id)
         .execute(db)
         .await?;
