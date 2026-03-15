@@ -492,9 +492,15 @@ export function TiptapPageMentionInput({
   // ---------------------------------------------------------------------------
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: ProseMirror handles all keyboard/a11y internally
     <div
       ref={containerRef}
-      className={cn('relative w-full', disabled && 'pointer-events-none')}
+      className={cn(
+        'relative w-full cursor-text',
+        disabled && 'pointer-events-none'
+      )}
+      onClick={() => editor?.commands.focus()}
+      onKeyDown={() => editor?.commands.focus()}
     >
       <EditorContent
         editor={editor}
