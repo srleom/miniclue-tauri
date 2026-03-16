@@ -98,15 +98,7 @@ pub async fn stream_chat(
     api_key: String,
     base_url_override: Option<String>,
 ) -> Result<Pin<Box<dyn Stream<Item = Result<String, LlmError>> + Send>>, LlmError> {
-    stream_chat_with_options(
-        messages,
-        model,
-        api_key,
-        Some(0.7),
-        Some(1024),
-        base_url_override,
-    )
-    .await
+    stream_chat_with_options(messages, model, api_key, Some(0.7), None, base_url_override).await
 }
 
 async fn stream_chat_with_options(
