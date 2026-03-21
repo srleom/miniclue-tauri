@@ -112,12 +112,6 @@ impl LlamaServerManager {
         });
     }
 
-    /// Returns the current status of the embed server.
-    #[allow(dead_code)]
-    pub async fn embed_status(&self) -> ServerStatus {
-        self.embed.lock().await.status
-    }
-
     // -----------------------------------------------------------------------
     // Chat server
     // -----------------------------------------------------------------------
@@ -227,12 +221,48 @@ pub struct LlamaStatus {
 // Spawn helpers
 // ---------------------------------------------------------------------------
 
+/// Compute the number of GPU layers to offload based on detected hardware.
+///
+/// Returns 99 (offload all layers) if a capable GPU is detected, otherwise 0 (CPU-only).
+/// This prevents wasting GPU memory on integrated GPUs or CPU-only systems.
+async fn compute_ngl() -> (String, String) {
+    use crate::hardware::{detect_hardware, GpuClass};
+
+    // Detect hardware - we only need GPU info, but detect_hardware returns full profile
+    let app_data_dir = std::env::temp_dir(); // Placeholder path (disk space not needed here)
+    let hw = detect_hardware(&app_data_dir).await;
+
+    let gpu_name = hw.gpu_name.clone();
+    let ngl = match hw.gpu_class {
+        // Offload to GPU for capable hardware
+        GpuClass::AppleSilicon | GpuClass::NvidiaDiscrete | GpuClass::AmdDiscrete => {
+            "99".to_string()
+        }
+        // CPU-only for integrated GPUs or software renderers
+        _ => "0".to_string(),
+    };
+
+    (ngl, gpu_name)
+}
+
 async fn spawn_embed_server(
     app_handle: &AppHandle,
     instance: Arc<Mutex<ServerInstance>>,
 ) -> Result<Option<u32>, String> {
     let model_path = resolve_embed_model_path(app_handle)?;
     log::debug!("[embed_server] resolved model path: {}", model_path);
+
+    let (ngl, gpu_name) = compute_ngl().await;
+    log::info!(
+        "[embed_server] GPU: {}, ngl={} ({})",
+        gpu_name,
+        ngl,
+        if ngl == "99" {
+            "GPU acceleration enabled"
+        } else {
+            "CPU-only mode"
+        }
+    );
 
     let args = vec![
         "--model".to_string(),
@@ -251,7 +281,7 @@ async fn spawn_embed_server(
         "--rope-freq-scale".to_string(),
         "0.75".to_string(),
         "-ngl".to_string(),
-        "99".to_string(),
+        ngl,
     ];
 
     spawn_sidecar(app_handle, &args, instance).await
@@ -263,6 +293,19 @@ async fn spawn_chat_server(
     instance: Arc<Mutex<ServerInstance>>,
 ) -> Result<Option<u32>, String> {
     log::debug!("[chat_server] spawning with model path: {}", model_path);
+
+    let (ngl, gpu_name) = compute_ngl().await;
+    log::info!(
+        "[chat_server] GPU: {}, ngl={} ({})",
+        gpu_name,
+        ngl,
+        if ngl == "99" {
+            "GPU acceleration enabled"
+        } else {
+            "CPU-only mode"
+        }
+    );
+
     let args = vec![
         "--model".to_string(),
         model_path.to_string(),
@@ -271,7 +314,7 @@ async fn spawn_chat_server(
         "--ctx-size".to_string(),
         "8192".to_string(),
         "-ngl".to_string(),
-        "99".to_string(),
+        ngl,
         "--batch-size".to_string(),
         "512".to_string(),
     ];
@@ -303,25 +346,10 @@ async fn spawn_sidecar(
         }
     };
 
-    // On macOS, set DYLD_LIBRARY_PATH to the bundled binaries directory so the
-    // companion .dylib files (libllama, libggml-*, etc.) can be found.
-    // resource_dir() resolves to src-tauri/ in dev (where binaries/ already lives)
-    // and to Contents/Resources/ in production (where binaries/*.dylib are bundled).
-    #[cfg(target_os = "macos")]
-    let cmd = {
-        let lib_dir = app_handle
-            .path()
-            .resource_dir()
-            .map(|d| d.join("binaries"))
-            .ok();
-        log::debug!("[spawn_sidecar] DYLD_LIBRARY_PATH={:?}", lib_dir);
-        match lib_dir {
-            Some(dir) => sidecar_cmd.args(args).env("DYLD_LIBRARY_PATH", dir),
-            None => sidecar_cmd.args(args),
-        }
-    };
-
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    // On macOS, dylibs now use @loader_path (fixed in build.rs via install_name_tool).
+    // On Windows, DLLs are resolved from the same directory as the executable.
+    // No environment variables needed.
+    #[cfg(not(target_os = "linux"))]
     let cmd = sidecar_cmd.args(args);
 
     let (rx, child) = cmd

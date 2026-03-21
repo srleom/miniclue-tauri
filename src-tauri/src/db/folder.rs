@@ -3,6 +3,79 @@ use uuid::Uuid;
 
 use crate::models::folder::Folder;
 
+#[derive(sqlx::FromRow)]
+struct FolderDocumentRow {
+    // Folder fields
+    folder_id: String,
+    folder_title: String,
+    folder_description: String,
+    folder_is_default: i32,
+    folder_created_at: String,
+    folder_updated_at: String,
+    // Document fields (nullable since LEFT JOIN)
+    doc_id: Option<String>,
+    doc_title: Option<String>,
+    doc_status: Option<String>,
+    doc_folder_id: Option<String>,
+}
+
+/// Get all folders with their documents in a single query (avoids N+1).
+/// Returns a Vec of (Folder, Vec<(doc_id, doc_title, doc_status, doc_folder_id)>).
+pub async fn get_folders_with_documents(
+    pool: &SqlitePool,
+) -> Result<Vec<(Folder, Vec<(String, String, String, String)>)>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, FolderDocumentRow>(
+        "SELECT 
+            f.id as folder_id, 
+            f.title as folder_title, 
+            f.description as folder_description,
+            f.is_default as folder_is_default, 
+            f.created_at as folder_created_at, 
+            f.updated_at as folder_updated_at,
+            d.id as doc_id, 
+            d.title as doc_title, 
+            d.status as doc_status, 
+            d.folder_id as doc_folder_id
+        FROM folders f
+        LEFT JOIN documents d ON d.folder_id = f.id
+        ORDER BY f.is_default DESC, f.updated_at DESC, d.created_at DESC",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    // Group by folder
+    let mut result: Vec<(Folder, Vec<(String, String, String, String)>)> = Vec::new();
+    let mut current_folder_id: Option<String> = None;
+
+    for row in rows {
+        // Check if we're on a new folder
+        if current_folder_id.as_ref() != Some(&row.folder_id) {
+            // Push new folder
+            let folder = Folder {
+                id: row.folder_id.clone(),
+                title: row.folder_title.clone(),
+                description: row.folder_description.clone(),
+                is_default: row.folder_is_default,
+                created_at: row.folder_created_at.clone(),
+                updated_at: row.folder_updated_at.clone(),
+            };
+            result.push((folder, Vec::new()));
+            current_folder_id = Some(row.folder_id.clone());
+        }
+
+        // Add document if present (LEFT JOIN might return NULL)
+        if let (Some(doc_id), Some(doc_title), Some(doc_status), Some(doc_folder_id)) =
+            (row.doc_id, row.doc_title, row.doc_status, row.doc_folder_id)
+        {
+            if let Some((_, docs)) = result.last_mut() {
+                docs.push((doc_id, doc_title, doc_status, doc_folder_id));
+            }
+        }
+    }
+
+    Ok(result)
+}
+
 pub async fn create_folder(
     pool: &SqlitePool,
     id: &str,

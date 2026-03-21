@@ -359,6 +359,11 @@ fn ensure_llama_server_binary() -> Result<(), String> {
     // the executable, not LD_LIBRARY_PATH.
     copy_libs_to_target_dir(&binaries_dir, llama_target.lib_extensions)?;
 
+    // On macOS, fix dylib install names to use @loader_path instead of absolute paths.
+    // This is required because SIP strips DYLD_LIBRARY_PATH from signed applications.
+    #[cfg(target_os = "macos")]
+    fix_macos_dylib_paths(&binaries_dir, llama_target.triple)?;
+
     Ok(())
 }
 
@@ -641,4 +646,139 @@ fn find_file_recursive(root: &Path, file_name: &OsStr) -> Option<PathBuf> {
     }
 
     None
+}
+
+/// Fix macOS dylib install names to use @loader_path instead of absolute paths.
+///
+/// This is required because System Integrity Protection (SIP) strips DYLD_LIBRARY_PATH
+/// from signed applications, preventing dynamic libraries from being found via environment
+/// variables. By using @loader_path, we make paths relative to the llama-server binary.
+#[cfg(target_os = "macos")]
+fn fix_macos_dylib_paths(binaries_dir: &Path, triple: &str) -> Result<(), String> {
+    use std::process::Command;
+
+    println!("cargo:warning=Fixing macOS dylib paths for production builds...");
+
+    // Find all .dylib files
+    let entries =
+        fs::read_dir(binaries_dir).map_err(|e| format!("Failed to read binaries dir: {e}"))?;
+
+    let mut dylibs = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("dylib") {
+            dylibs.push(path);
+        }
+    }
+
+    // Fix each dylib's install name and dependencies
+    for dylib in &dylibs {
+        let dylib_name = dylib
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or("Invalid dylib filename")?;
+
+        // 1. Fix the dylib's own install name to use @rpath
+        let install_name_result = Command::new("install_name_tool")
+            .arg("-id")
+            .arg(format!("@rpath/{}", dylib_name))
+            .arg(dylib)
+            .output();
+
+        match install_name_result {
+            Ok(output) if output.status.success() => {
+                println!("cargo:warning=Fixed install name for {}", dylib.display());
+            }
+            Ok(output) => {
+                println!(
+                    "cargo:warning=install_name_tool -id failed for {}: {}",
+                    dylib.display(),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            Err(e) => {
+                println!("cargo:warning=Failed to run install_name_tool: {e}");
+            }
+        }
+
+        // 2. Get current dependencies to fix them
+        let otool_output = Command::new("otool")
+            .arg("-L")
+            .arg(dylib)
+            .output()
+            .map_err(|e| format!("Failed to run otool: {e}"))?;
+
+        if otool_output.status.success() {
+            let output_str = String::from_utf8_lossy(&otool_output.stdout);
+            for line in output_str.lines() {
+                let line = line.trim();
+                // Look for absolute paths to dylibs
+                if line.starts_with('/') && line.contains(".dylib") {
+                    // Extract the path (before the version info in parentheses)
+                    if let Some(path_end) = line.find(" (compatibility") {
+                        let old_path = &line[..path_end].trim();
+                        // Get just the filename
+                        if let Some(filename) =
+                            Path::new(old_path).file_name().and_then(|f| f.to_str())
+                        {
+                            // Change to @loader_path
+                            let _ = Command::new("install_name_tool")
+                                .arg("-change")
+                                .arg(old_path)
+                                .arg(format!("@loader_path/{}", filename))
+                                .arg(dylib)
+                                .status();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Fix llama-server binary to use @loader_path for dylibs
+    let sidecar_name = format!("llama-server-{}", triple);
+    let sidecar = binaries_dir.join(&sidecar_name);
+
+    if sidecar.exists() {
+        let otool_output = Command::new("otool")
+            .arg("-L")
+            .arg(&sidecar)
+            .output()
+            .map_err(|e| format!("Failed to run otool on sidecar: {e}"))?;
+
+        if otool_output.status.success() {
+            let output_str = String::from_utf8_lossy(&otool_output.stdout);
+            for line in output_str.lines() {
+                let line = line.trim();
+                if line.starts_with('/') && line.contains(".dylib") {
+                    if let Some(path_end) = line.find(" (compatibility") {
+                        let old_path = &line[..path_end].trim();
+                        if let Some(filename) =
+                            Path::new(old_path).file_name().and_then(|f| f.to_str())
+                        {
+                            let result = Command::new("install_name_tool")
+                                .arg("-change")
+                                .arg(old_path)
+                                .arg(format!("@loader_path/{}", filename))
+                                .arg(&sidecar)
+                                .status();
+
+                            if result.is_ok() {
+                                println!("cargo:warning=Fixed {} in llama-server", filename);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        println!("cargo:warning=macOS dylib paths fixed successfully");
+    } else {
+        println!(
+            "cargo:warning=Sidecar {} not found, skipping dylib fixes",
+            sidecar_name
+        );
+    }
+
+    Ok(())
 }

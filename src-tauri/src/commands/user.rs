@@ -20,34 +20,33 @@ const PROVIDER_ORDER: &[&str] = &["openai", "gemini", "anthropic", "xai", "deeps
 pub async fn get_folders_with_documents(
     state: State<'_, AppState>,
 ) -> Result<Vec<UserFolder>, ApiError> {
-    let folders = db::folder::get_all_folders(&state.db).await?;
+    let folders_with_docs = db::folder::get_folders_with_documents(&state.db).await?;
 
-    let mut result = Vec::new();
+    let result = folders_with_docs
+        .into_iter()
+        .map(|(folder, documents)| {
+            let user_folder_documents = documents
+                .into_iter()
+                .map(
+                    |(id, title, status, folder_id)| crate::models::user::UserFolderDocument {
+                        id,
+                        title,
+                        status,
+                        folder_id,
+                    },
+                )
+                .collect();
 
-    for folder in folders {
-        // Fetch documents for this folder (no limit, no offset - get all)
-        let documents =
-            db::document::get_documents_by_folder(&state.db, &folder.id, 1000, 0).await?;
-
-        let user_folder_documents = documents
-            .into_iter()
-            .map(|d| crate::models::user::UserFolderDocument {
-                id: d.id,
-                title: d.title,
-                status: d.status,
-                folder_id: d.folder_id,
-            })
-            .collect();
-
-        result.push(UserFolder {
-            id: folder.id,
-            title: folder.title,
-            description: folder.description,
-            is_default: folder.is_default != 0,
-            updated_at: folder.updated_at,
-            documents: Some(user_folder_documents),
-        });
-    }
+            UserFolder {
+                id: folder.id,
+                title: folder.title,
+                description: folder.description,
+                is_default: folder.is_default != 0,
+                updated_at: folder.updated_at,
+                documents: Some(user_folder_documents),
+            }
+        })
+        .collect();
 
     Ok(result)
 }

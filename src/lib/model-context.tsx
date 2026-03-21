@@ -20,9 +20,9 @@ export function ModelProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <ModelContext value={{ selectedModel, setSelectedModel }}>
+    <ModelContext.Provider value={{ selectedModel, setSelectedModel }}>
       {children}
-    </ModelContext>
+    </ModelContext.Provider>
   );
 }
 

@@ -143,8 +143,6 @@ impl ModelManager {
         model_id: &str,
         app_handle: &AppHandle,
     ) -> Result<LocalModelStatus, String> {
-        let path = model_file_path(app_handle, model_id)?;
-
         // We need to find the filename for this model from the catalog to check existence
         // For now, check if any .gguf file exists in the model directory
         let model_dir = model_dir(app_handle, model_id)?;
@@ -160,8 +158,6 @@ impl ModelManager {
         } else {
             (false, None, 0)
         };
-
-        let _ = path; // suppress unused warning
 
         Ok(LocalModelStatus {
             model_id: model_id.to_string(),
@@ -353,15 +349,11 @@ fn catalog_cache_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
 // ---------------------------------------------------------------------------
 
 fn model_dir(app_handle: &AppHandle, model_id: &str) -> Result<PathBuf, String> {
-    let app_data = app_handle
+    let app_cache = app_handle
         .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {e}"))?;
-    Ok(app_data.join("models").join(model_id))
-}
-
-fn model_file_path(app_handle: &AppHandle, model_id: &str) -> Result<PathBuf, String> {
-    model_dir(app_handle, model_id)
+        .app_cache_dir()
+        .map_err(|e| format!("Failed to get app cache dir: {e}"))?;
+    Ok(app_cache.join("models").join(model_id))
 }
 
 fn find_gguf_in_dir(dir: &Path) -> Option<PathBuf> {
