@@ -295,6 +295,12 @@ async fn spawn_embed_server(
         "0.75".to_string(),
         "-ngl".to_string(),
         ngl,
+        // Single-user desktop flow: keep one slot for stable prompt-cache reuse.
+        "--parallel".to_string(),
+        "1".to_string(),
+        "--cache-prompt".to_string(),
+        "--cache-reuse".to_string(),
+        "256".to_string(),
     ];
 
     spawn_sidecar(app_handle, &args, instance).await
@@ -331,6 +337,15 @@ async fn spawn_chat_server(
         ngl,
         "--batch-size".to_string(),
         "512".to_string(),
+        // Keep a single slot for desktop single-user usage so consecutive turns
+        // hit the same KV cache and maximize prompt reuse.
+        "--parallel".to_string(),
+        "1".to_string(),
+        // Explicitly enable prompt caching and KV shifting reuse for repeated
+        // prompt prefixes (system prompt + document context + recent history).
+        "--cache-prompt".to_string(),
+        "--cache-reuse".to_string(),
+        "256".to_string(),
     ];
 
     if let Some(mmproj) = mmproj_path {

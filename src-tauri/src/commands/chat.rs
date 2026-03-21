@@ -367,7 +367,10 @@ pub async fn stream_chat(
     let credentials = resolve_model_credentials(&model, &config_guard)?;
 
     // Aux credentials use a small model from the same provider for query rewriting and title generation.
+    // For local models this currently maps to the same local llama-server model, which adds a full
+    // extra generation pass before every response and significantly increases latency.
     let aux_credentials = get_aux_model_credentials(&model, &config_guard);
+    let is_local_model = model == "local" || model.starts_with("local:");
 
     let local_model_id = if model == "local" {
         config_guard.settings.local_chat_model_id.clone()
@@ -394,7 +397,7 @@ pub async fn stream_chat(
     };
 
     // If using local chat, ensure the server is running — restart it if it terminated.
-    if model == "local" || model.starts_with("local:") {
+    if is_local_model {
         let chat_status = state.llama_server.chat_status().await;
         if !matches!(chat_status, ServerStatus::Running | ServerStatus::Starting) {
             log::info!(
@@ -473,7 +476,9 @@ pub async fn stream_chat(
     // that co-reference resolution and keyword expansion actually improve retrieval quality.
     // When rewriting is skipped, we retrieve immediately with the original query.
     let has_history = !history.is_empty();
-    let should_rewrite = aux_credentials.is_some() && has_history;
+    // Skip rewrite for local models to avoid doubling llama-server inference time.
+    // For cloud providers we keep rewrite enabled when aux credentials exist.
+    let should_rewrite = aux_credentials.is_some() && has_history && !is_local_model;
 
     let (rewritten_query, chunks) = if should_rewrite {
         // Rewrite first, then retrieve with the better query
@@ -495,6 +500,8 @@ pub async fn stream_chat(
     } else {
         if !has_history {
             log::info!("No prior history — skipping query rewriting on first message");
+        } else if is_local_model {
+            log::info!("Local model selected — skipping query rewriting for lower latency");
         } else {
             log::info!("No aux credentials — skipping query rewriting");
         }
