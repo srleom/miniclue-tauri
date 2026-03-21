@@ -461,14 +461,34 @@ path: string | null;
 /**
  * File size on disk (0 if not downloaded)
  */
-sizeOnDisk: number }
+sizeOnDisk: number; 
+/**
+ * Whether mmproj file is present (for vision models)
+ */
+mmprojDownloaded: boolean; 
+/**
+ * Absolute path to mmproj file (if downloaded)
+ */
+mmprojPath: string | null }
 export type MessageResponse = { id: string; chat_id: string; role: string; parts: string; metadata: string; created_at: string }
 export type ModelCatalog = { schemaVersion: number; updatedAt: string; models: ModelEntry[] }
 export type ModelEntry = { id: string; name: string; description: string; 
 /**
  * File size in bytes (as f64 for TypeScript compatibility)
  */
-sizeBytes: number; sha256: string | null; hfRepo: string; hfFilename: string; minRamGb: number; isDefault: boolean; supersededBy: string | null; tags: string[] }
+sizeBytes: number; sha256: string | null; hfRepo: string; hfFilename: string; minRamGb: number; isDefault: boolean; supersededBy: string | null; tags: string[]; 
+/**
+ * Whether this model supports vision (image inputs)
+ */
+vision?: boolean; 
+/**
+ * Vision projection model filename (e.g., "mmproj-F16.gguf") - required if vision=true
+ */
+mmprojFilename: string | null; 
+/**
+ * Vision projection model file size in bytes
+ */
+mmprojSizeBytes: number | null }
 export type ModelToggle = { id: string; name: string; enabled: boolean; vision: boolean }
 export type ModelsResponse = { providers: ProviderModels[] }
 export type ProviderModels = { provider: string; models: ModelToggle[] }

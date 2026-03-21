@@ -121,7 +121,12 @@ impl LlamaServerManager {
     /// Returns immediately; the server warms up asynchronously.  It is safe to
     /// call this multiple times — subsequent calls are no-ops if the server is
     /// already starting or running.
-    pub fn start_chat_server_background(&self, app_handle: AppHandle, model_path: String) {
+    pub fn start_chat_server_background(
+        &self,
+        app_handle: AppHandle,
+        model_path: String,
+        mmproj_path: Option<String>,
+    ) {
         let chat = Arc::clone(&self.chat);
         let app_handle_clone = app_handle.clone();
         tauri::async_runtime::spawn(async move {
@@ -137,7 +142,14 @@ impl LlamaServerManager {
                 chat.lock().await.status = ServerStatus::Starting;
             }
 
-            match spawn_chat_server(&app_handle_clone, &model_path, Arc::clone(&chat)).await {
+            match spawn_chat_server(
+                &app_handle_clone,
+                &model_path,
+                mmproj_path.as_deref(),
+                Arc::clone(&chat),
+            )
+            .await
+            {
                 Ok(pid) => {
                     chat.lock().await.pid = pid;
                     log::info!("llama chat server spawned (pid={pid:?}), waiting for readiness…");
@@ -165,6 +177,7 @@ impl LlamaServerManager {
         &self,
         app_handle: &AppHandle,
         model_path: &str,
+        mmproj_path: Option<&str>,
     ) -> Result<(), String> {
         {
             let guard = self.chat.lock().await;
@@ -175,7 +188,7 @@ impl LlamaServerManager {
 
         self.chat.lock().await.status = ServerStatus::Starting;
 
-        match spawn_chat_server(app_handle, model_path, Arc::clone(&self.chat)).await {
+        match spawn_chat_server(app_handle, model_path, mmproj_path, Arc::clone(&self.chat)).await {
             Ok(pid) => {
                 self.chat.lock().await.pid = pid;
                 log::info!("llama chat server spawned (pid={pid:?}), waiting for readiness…");
@@ -290,6 +303,7 @@ async fn spawn_embed_server(
 async fn spawn_chat_server(
     app_handle: &AppHandle,
     model_path: &str,
+    mmproj_path: Option<&str>,
     instance: Arc<Mutex<ServerInstance>>,
 ) -> Result<Option<u32>, String> {
     log::debug!("[chat_server] spawning with model path: {}", model_path);
@@ -306,7 +320,7 @@ async fn spawn_chat_server(
         }
     );
 
-    let args = vec![
+    let mut args = vec![
         "--model".to_string(),
         model_path.to_string(),
         "--port".to_string(),
@@ -318,6 +332,12 @@ async fn spawn_chat_server(
         "--batch-size".to_string(),
         "512".to_string(),
     ];
+
+    if let Some(mmproj) = mmproj_path {
+        log::info!("[chat_server] using mmproj: {}", mmproj);
+        args.push("--mmproj".to_string());
+        args.push(mmproj.to_string());
+    }
 
     spawn_sidecar(app_handle, &args, instance).await
 }

@@ -89,7 +89,13 @@ pub async fn download_local_model(
 
     let path = state
         .model_manager
-        .download_model(&model_id, &entry.hf_repo, &entry.hf_filename, &app_handle)
+        .download_model(
+            &model_id,
+            &entry.hf_repo,
+            &entry.hf_filename,
+            entry.mmproj_filename.as_deref(),
+            &app_handle,
+        )
         .await
         .map_err(ApiError::internal_error)?;
 
@@ -119,6 +125,7 @@ pub async fn delete_local_model(
     if config.settings.local_chat_model_id.as_deref() == Some(&model_id) {
         config.settings.local_chat_model_id = None;
         config.settings.local_chat_model_path = None;
+        config.settings.local_chat_mmproj_path = None;
         config.settings.local_chat_enabled = false;
         config
             .save()
@@ -182,6 +189,7 @@ pub async fn set_local_chat_enabled(
             config.settings.local_chat_enabled = true;
             config.settings.local_chat_model_id = Some(mid.clone());
             config.settings.local_chat_model_path = status.path;
+            config.settings.local_chat_mmproj_path = status.mmproj_path;
         } else {
             // Remove from enabled set
             config
@@ -220,6 +228,7 @@ pub async fn set_local_chat_enabled(
     if enabled {
         if let Some(ref path) = config.settings.local_chat_model_path.clone() {
             let path_clone = path.clone();
+            let mmproj_path = config.settings.local_chat_mmproj_path.clone();
             log::info!(
                 "[set_local_chat_enabled] starting chat server with model path: {}",
                 path_clone
@@ -227,7 +236,7 @@ pub async fn set_local_chat_enabled(
             drop(config);
             state
                 .llama_server
-                .start_chat_server(&app_handle, &path_clone)
+                .start_chat_server(&app_handle, &path_clone, mmproj_path.as_deref())
                 .await
                 .map_err(ApiError::internal_error)?;
             log::info!("[set_local_chat_enabled] chat server started successfully");

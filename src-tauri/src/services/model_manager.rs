@@ -44,6 +44,16 @@ pub struct ModelEntry {
     #[serde(alias = "superseded_by")]
     pub superseded_by: Option<String>,
     pub tags: Vec<String>,
+    /// Whether this model supports vision (image inputs)
+    #[serde(default)]
+    pub vision: bool,
+    /// Vision projection model filename (e.g., "mmproj-F16.gguf") - required if vision=true
+    #[serde(alias = "mmproj_filename")]
+    pub mmproj_filename: Option<String>,
+    /// Vision projection model file size in bytes
+    #[specta(type = Option<f64>)]
+    #[serde(alias = "mmproj_size_bytes")]
+    pub mmproj_size_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -72,6 +82,10 @@ pub struct LocalModelStatus {
     /// File size on disk (0 if not downloaded)
     #[specta(type = f64)]
     pub size_on_disk: u64,
+    /// Whether mmproj file is present (for vision models)
+    pub mmproj_downloaded: bool,
+    /// Absolute path to mmproj file (if downloaded)
+    pub mmproj_path: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -159,22 +173,37 @@ impl ModelManager {
             (false, None, 0)
         };
 
+        // Check for mmproj file (vision models only)
+        let (mmproj_downloaded, mmproj_path) = if model_dir.exists() {
+            let mmproj = find_mmproj_in_dir(&model_dir);
+            match mmproj {
+                Some(p) => (true, Some(p.to_string_lossy().into_owned())),
+                None => (false, None),
+            }
+        } else {
+            (false, None)
+        };
+
         Ok(LocalModelStatus {
             model_id: model_id.to_string(),
             is_downloaded,
             path: actual_path,
             size_on_disk: size,
+            mmproj_downloaded,
+            mmproj_path,
         })
     }
 
     /// Download a model with progress events emitted to the frontend.
     ///
     /// Emits `"model-download-progress"` events with `DownloadProgress` payload.
+    /// If mmproj_filename is provided, downloads both the model and mmproj files.
     pub async fn download_model(
         &self,
         model_id: &str,
         hf_repo: &str,
         hf_filename: &str,
+        mmproj_filename: Option<&str>,
         app_handle: &AppHandle,
     ) -> Result<String, String> {
         // Prevent concurrent downloads of the same model
@@ -187,11 +216,34 @@ impl ModelManager {
         }
 
         let result = self
-            .do_download(model_id, hf_repo, hf_filename, app_handle)
+            .do_download_with_mmproj(model_id, hf_repo, hf_filename, mmproj_filename, app_handle)
             .await;
 
         self.downloading.lock().await.remove(model_id);
         result
+    }
+
+    async fn do_download_with_mmproj(
+        &self,
+        model_id: &str,
+        hf_repo: &str,
+        hf_filename: &str,
+        mmproj_filename: Option<&str>,
+        app_handle: &AppHandle,
+    ) -> Result<String, String> {
+        // Download main model file
+        let model_path = self
+            .do_download(model_id, hf_repo, hf_filename, app_handle)
+            .await?;
+
+        // Download mmproj file if specified
+        if let Some(mmproj_file) = mmproj_filename {
+            log::info!("Downloading mmproj file for {model_id}: {mmproj_file}");
+            self.do_download(model_id, hf_repo, mmproj_file, app_handle)
+                .await?;
+        }
+
+        Ok(model_path)
     }
 
     async fn do_download(
@@ -363,6 +415,23 @@ fn find_gguf_in_dir(dir: &Path) -> Option<PathBuf> {
         .find_map(|e| {
             let path = e.path();
             if path.extension().and_then(|s| s.to_str()) == Some("gguf") {
+                Some(path)
+            } else {
+                None
+            }
+        })
+}
+
+fn find_mmproj_in_dir(dir: &Path) -> Option<PathBuf> {
+    std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .find_map(|e| {
+            let path = e.path();
+            let filename = path.file_name()?.to_str()?;
+            if filename.starts_with("mmproj-")
+                && path.extension().and_then(|s| s.to_str()) == Some("gguf")
+            {
                 Some(path)
             } else {
                 None

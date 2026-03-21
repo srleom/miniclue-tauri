@@ -322,6 +322,26 @@ fn truncate_generated_title(raw_title: &str) -> String {
     }
 }
 
+fn annotate_query_with_cited_pages(query: &str, cited_pages: Option<&[i32]>) -> String {
+    let Some(pages) = cited_pages else {
+        return query.to_string();
+    };
+    if pages.is_empty() {
+        return query.to_string();
+    }
+
+    let page_list = pages
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!(
+        "{}\n\nReferenced pages: {}. Tokens like @N refer to page N in this document.",
+        query, page_list
+    )
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn stream_chat(
@@ -339,13 +359,39 @@ pub async fn stream_chat(
     let user_message = request.message.clone();
     let model = request.model.clone();
 
+    // Ensure the chat belongs to the document before any history reads or inserts.
+    db::chat::get_chat(&db, &document_id, &chat_id).await?;
+
     // Resolve credentials for the selected model
     let config_guard = state.config.read().await;
     let credentials = resolve_model_credentials(&model, &config_guard)?;
 
     // Aux credentials use a small model from the same provider for query rewriting and title generation.
     let aux_credentials = get_aux_model_credentials(&model, &config_guard);
+
+    let local_model_id = if model == "local" {
+        config_guard.settings.local_chat_model_id.clone()
+    } else {
+        model.strip_prefix("local:").map(str::to_string)
+    };
     drop(config_guard);
+
+    let local_model_supports_vision = if model == "local" || model.starts_with("local:") {
+        match (
+            &local_model_id,
+            state.model_manager.get_catalog(&app_handle).await,
+        ) {
+            (Some(local_id), Ok(catalog)) => catalog
+                .models
+                .iter()
+                .find(|m| m.id == *local_id)
+                .map(|m| m.vision)
+                .unwrap_or(false),
+            _ => false,
+        }
+    } else {
+        false
+    };
 
     // If using local chat, ensure the server is running — restart it if it terminated.
     if model == "local" || model.starts_with("local:") {
@@ -355,19 +401,17 @@ pub async fn stream_chat(
                 "[stream_chat] local chat server is {:?} — attempting restart",
                 chat_status
             );
-            let model_path = state
-                .config
-                .read()
-                .await
-                .settings
-                .local_chat_model_path
-                .clone()
-                .ok_or_else(|| {
+            let (model_path, mmproj_path) = {
+                let cfg = state.config.read().await;
+                let model_path = cfg.settings.local_chat_model_path.clone().ok_or_else(|| {
                     ApiError::invalid_input("Local chat model path not configured".to_string())
                 })?;
+                let mmproj_path = cfg.settings.local_chat_mmproj_path.clone();
+                (model_path, mmproj_path)
+            };
             state
                 .llama_server
-                .start_chat_server(&app_handle, &model_path)
+                .start_chat_server(&app_handle, &model_path, mmproj_path.as_deref())
                 .await
                 .map_err(|e| {
                     ApiError::internal_error(format!("Failed to restart local chat server: {e}"))
@@ -378,7 +422,7 @@ pub async fn stream_chat(
     // 1. Get conversation history (last 10 messages for context) — fetch BEFORE saving the
     //    current user message so it only contains prior turns (avoids duplicate user message
     //    in the LLM payload).
-    let messages = db::chat::list_messages(&db, &chat_id, 10).await?;
+    let messages = db::chat::list_recent_messages(&db, &chat_id, 10).await?;
 
     let history: Vec<rag::query_rewriter::Message> = messages
         .iter()
@@ -504,7 +548,13 @@ pub async fn stream_chat(
     // model supports image inputs. Screenshots provide full visual context (tables,
     // figures, layout) that plain text extraction cannot capture.
     let mut cited_screenshots: Vec<rag::context_builder::CitedPageScreenshot> = Vec::new();
-    if crate::catalog::model_supports_vision(&request.model) {
+    let supports_vision = if model == "local" || model.starts_with("local:") {
+        local_model_supports_vision
+    } else {
+        crate::catalog::model_supports_vision(&request.model)
+    };
+
+    if supports_vision {
         if let Some(cited_pages) = &request.cited_pages {
             if !cited_pages.is_empty() {
                 match db::embedding::get_screenshot_paths_for_pages(&db, &document_id, cited_pages)
@@ -564,8 +614,11 @@ pub async fn stream_chat(
         .execute(&db)
         .await?;
 
+    let final_query =
+        annotate_query_with_cited_pages(&rewritten_query, request.cited_pages.as_deref());
+
     let rag_messages =
-        rag::build_rag_context(&chunks, &history, &rewritten_query, 3, &cited_screenshots);
+        rag::build_rag_context(&chunks, &history, &final_query, 3, &cited_screenshots);
 
     // 6. Stream from LLM
     let stream_start = std::time::Instant::now();

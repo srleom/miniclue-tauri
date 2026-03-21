@@ -35,6 +35,9 @@ pub struct AppSettings {
     /// Still used by the llama-server startup logic to know which file to load.
     #[serde(default)]
     pub local_chat_model_path: Option<String>,
+    /// Absolute path to the mmproj GGUF file for vision models, if applicable.
+    #[serde(default)]
+    pub local_chat_mmproj_path: Option<String>,
     /// ID of the model the llama-server was last started with (e.g. "qwen3-4b-q4").
     #[serde(default)]
     pub local_chat_model_id: Option<String>,

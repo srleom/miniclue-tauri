@@ -111,6 +111,24 @@ pub async fn list_messages(
     .await
 }
 
+pub async fn list_recent_messages(
+    pool: &SqlitePool,
+    chat_id: &str,
+    limit: i64,
+) -> Result<Vec<Message>, sqlx::Error> {
+    let mut rows = sqlx::query_as::<_, Message>(
+        "SELECT id, chat_id, role, parts, metadata, created_at \
+         FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT ?",
+    )
+    .bind(chat_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    rows.reverse();
+    Ok(rows)
+}
+
 pub async fn count_messages(pool: &SqlitePool, chat_id: &str) -> Result<i64, sqlx::Error> {
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM messages WHERE chat_id = ?")
         .bind(chat_id)

@@ -61,14 +61,22 @@ pub fn run() {
                     .settings
                     .local_chat_model_path
                     .clone();
+                let mmproj_path = state
+                    .config
+                    .blocking_read()
+                    .settings
+                    .local_chat_mmproj_path
+                    .clone();
                 if let Some(path) = model_path {
                     log::info!(
                         "[startup] local chat model configured — pre-warming chat server: {}",
                         path
                     );
-                    state
-                        .llama_server
-                        .start_chat_server_background(app.handle().clone(), path);
+                    state.llama_server.start_chat_server_background(
+                        app.handle().clone(),
+                        path,
+                        mmproj_path,
+                    );
                 }
 
                 // Refresh model catalog from remote in background
