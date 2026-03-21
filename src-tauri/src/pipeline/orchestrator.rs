@@ -1,8 +1,8 @@
 use crate::db;
 use crate::models::document::DocumentStatusChangedEvent;
 use sqlx::SqlitePool;
-use std::path::Path;
-use tauri::{AppHandle, Emitter};
+use std::path::{Path, PathBuf};
+use tauri::{AppHandle, Emitter, Manager};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -18,6 +18,36 @@ pub enum OrchestratorError {
     EmbedderError(#[from] super::embedder::EmbedderError),
     #[error("Configuration error: {0}")]
     ConfigError(String),
+}
+
+/// Resolve the path to the bundled nomic-embed-text tokenizer.json.
+/// Mirrors the pattern used by `resolve_embed_model_path` in `llama_server.rs`.
+fn resolve_tokenizer_path(app_handle: &AppHandle) -> Result<PathBuf, OrchestratorError> {
+    let resource_dir = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| OrchestratorError::ConfigError(format!("Failed to get resource dir: {e}")))?;
+
+    let tokenizer_path = resource_dir
+        .join("resources")
+        .join("models")
+        .join("tokenizer.json");
+
+    if !tokenizer_path.exists() {
+        // Dev mode fallback: read directly from the source tree
+        let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("models")
+            .join("tokenizer.json");
+        if dev_path.exists() {
+            return Ok(dev_path);
+        }
+        return Err(OrchestratorError::ConfigError(
+            "nomic-embed tokenizer.json not found (run `cargo build` to download it)".to_string(),
+        ));
+    }
+
+    Ok(tokenizer_path)
 }
 
 /// Update document status in database
@@ -77,8 +107,25 @@ pub async fn process_document(
 
     // Step 2: Extract pages from PDF
     log::info!("Extracting pages from PDF: {}", file_path);
-    let pages =
-        super::pdf_parser::extract_pages(file_path, document_id, app_data_dir, &app_handle)?;
+    let file_path_owned = file_path.to_string();
+    let document_id_owned = document_id.to_string();
+    let app_data_dir_owned = app_data_dir.to_path_buf();
+    let app_handle_for_extract = app_handle.clone();
+
+    let pages = tokio::task::spawn_blocking(move || {
+        super::pdf_parser::extract_pages(
+            &file_path_owned,
+            &document_id_owned,
+            &app_data_dir_owned,
+            &app_handle_for_extract,
+        )
+    })
+    .await
+    .unwrap_or_else(|join_err| {
+        Err(super::pdf_parser::PdfParserError::ExtractionError(format!(
+            "PDF extraction panicked: {join_err}"
+        )))
+    })?;
     let page_count = pages.len() as i32;
     log::info!("Extracted {} pages", page_count);
 
@@ -115,12 +162,18 @@ pub async fn process_document(
 
     // Step 5: Chunk pages
     log::info!("Chunking pages for document {}", document_id);
+
+    let tokenizer_path = resolve_tokenizer_path(&app_handle)?;
+    let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path).map_err(|e| {
+        OrchestratorError::ConfigError(format!("Failed to load nomic-embed tokenizer: {e}"))
+    })?;
+
     // Chunker only needs page_number and raw_text
     let pages_for_chunking: Vec<(i64, String)> = pages
         .iter()
         .map(|p| (p.page_number, p.raw_text.clone()))
         .collect();
-    let chunked_pages = super::chunker::chunk_pages(&pages_for_chunking)?;
+    let chunked_pages = super::chunker::chunk_pages(&pages_for_chunking, &tokenizer)?;
 
     // Step 6: Save chunks and collect chunk metadata for embedding
     let mut all_chunks_for_embedding = Vec::new();
