@@ -2,8 +2,12 @@ use crate::db;
 use crate::models::document::DocumentStatusChangedEvent;
 use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter, Manager};
 use thiserror::Error;
+
+static TOKENIZER: OnceLock<tokenizers::Tokenizer> = OnceLock::new();
+static TOKENIZER_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 #[derive(Error, Debug)]
 #[allow(clippy::enum_variant_names)]
@@ -48,6 +52,27 @@ fn resolve_tokenizer_path(app_handle: &AppHandle) -> Result<PathBuf, Orchestrato
     }
 
     Ok(tokenizer_path)
+}
+
+fn get_tokenizer(
+    app_handle: &AppHandle,
+) -> Result<&'static tokenizers::Tokenizer, OrchestratorError> {
+    if let Some(tokenizer) = TOKENIZER.get() {
+        if let Some(path) = TOKENIZER_PATH.get() {
+            log::debug!("Using cached nomic tokenizer from {}", path.display());
+        }
+        return Ok(tokenizer);
+    }
+
+    let tokenizer_path = resolve_tokenizer_path(app_handle)?;
+    log::info!("Loading nomic tokenizer from {}", tokenizer_path.display());
+
+    let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path).map_err(|e| {
+        OrchestratorError::ConfigError(format!("Failed to load nomic-embed tokenizer: {e}"))
+    })?;
+
+    let _ = TOKENIZER_PATH.set(tokenizer_path);
+    Ok(TOKENIZER.get_or_init(|| tokenizer))
 }
 
 /// Update document status in database
@@ -163,17 +188,14 @@ pub async fn process_document(
     // Step 5: Chunk pages
     log::info!("Chunking pages for document {}", document_id);
 
-    let tokenizer_path = resolve_tokenizer_path(&app_handle)?;
-    let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path).map_err(|e| {
-        OrchestratorError::ConfigError(format!("Failed to load nomic-embed tokenizer: {e}"))
-    })?;
+    let tokenizer = get_tokenizer(&app_handle)?;
 
     // Chunker only needs page_number and raw_text
     let pages_for_chunking: Vec<(i64, String)> = pages
         .iter()
         .map(|p| (p.page_number, p.raw_text.clone()))
         .collect();
-    let chunked_pages = super::chunker::chunk_pages(&pages_for_chunking, &tokenizer)?;
+    let chunked_pages = super::chunker::chunk_pages(&pages_for_chunking, tokenizer)?;
 
     // Step 6: Save chunks and collect chunk metadata for embedding
     let mut all_chunks_for_embedding = Vec::new();
