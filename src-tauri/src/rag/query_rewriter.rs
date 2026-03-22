@@ -120,7 +120,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_build_rewrite_messages_matches_legacy_structure() {
+    fn test_build_rewrite_messages_expected_structure() {
         let history = vec![
             Message::text("assistant", "Message 1"),
             Message::text("user", "Message 2"),

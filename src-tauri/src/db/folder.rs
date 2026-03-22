@@ -3,6 +3,9 @@ use uuid::Uuid;
 
 use crate::models::folder::Folder;
 
+type FolderDocument = (String, String, String, String);
+type FolderWithDocuments = (Folder, Vec<FolderDocument>);
+
 #[derive(sqlx::FromRow)]
 struct FolderDocumentRow {
     // Folder fields
@@ -23,7 +26,7 @@ struct FolderDocumentRow {
 /// Returns a Vec of (Folder, Vec<(doc_id, doc_title, doc_status, doc_folder_id)>).
 pub async fn get_folders_with_documents(
     pool: &SqlitePool,
-) -> Result<Vec<(Folder, Vec<(String, String, String, String)>)>, sqlx::Error> {
+) -> Result<Vec<FolderWithDocuments>, sqlx::Error> {
     let rows = sqlx::query_as::<_, FolderDocumentRow>(
         "SELECT 
             f.id as folder_id, 
@@ -44,7 +47,7 @@ pub async fn get_folders_with_documents(
     .await?;
 
     // Group by folder
-    let mut result: Vec<(Folder, Vec<(String, String, String, String)>)> = Vec::new();
+    let mut result: Vec<FolderWithDocuments> = Vec::new();
     let mut current_folder_id: Option<String> = None;
 
     for row in rows {
@@ -106,6 +109,7 @@ pub async fn get_folder(pool: &SqlitePool, id: &str) -> Result<Folder, sqlx::Err
     .await
 }
 
+#[cfg(test)]
 pub async fn get_all_folders(pool: &SqlitePool) -> Result<Vec<Folder>, sqlx::Error> {
     sqlx::query_as::<_, Folder>(
         "SELECT id, title, description, is_default, created_at, updated_at \

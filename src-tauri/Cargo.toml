@@ -53,6 +53,8 @@ tiktoken-rs = "0.6"
 async-stream = "0.3"
 # Base64 encoding for image data URIs
 base64 = "0.22"
+# Secure credential storage (Keychain/Credential Manager/Secret Service)
+keyring = "3"
 # Hardware detection
 sysinfo = { version = "0.33", default-features = false, features = ["system", "disk"] }
 wgpu = { version = "22", default-features = false, features = ["wgsl"] }

@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::catalog::{DEFAULT_MODELS, MODEL_CATALOG};
 use crate::config::CustomProvider;
@@ -96,7 +96,7 @@ pub async fn store_api_key(
 
     // Check if provider already has key
     let config = state.config.read().await;
-    let already_has_key = config.has_api_key(&provider);
+    let already_has_key = config.has_provider_key(&provider);
     drop(config);
 
     println!(
@@ -117,9 +117,15 @@ pub async fn store_api_key(
     let mut config = state.config.write().await;
     let config_backup = config.backup();
 
-    // Store API key
-    println!("[store_api_key] Saving to config file...");
-    config.api_keys.insert(provider.clone(), api_key);
+    // Store API key in OS keyring first
+    state
+        .secret_store
+        .set_provider_key(&provider, &api_key)
+        .map_err(ApiError::security_error)?;
+
+    // Keep provider marker in config (non-secret)
+    println!("[store_api_key] Saving provider marker to config file...");
+    config.mark_provider_key_configured(&provider);
 
     // Initialize default models if this is the first key for this provider
     if !already_has_key {
@@ -152,9 +158,15 @@ pub async fn delete_api_key(
     state: State<'_, AppState>,
     provider: String,
 ) -> Result<ApiKeyResponse, ApiError> {
+    // Remove from keyring first
+    state
+        .secret_store
+        .delete_provider_key(&provider)
+        .map_err(ApiError::security_error)?;
+
     // Remove from config file
     let mut config = state.config.write().await;
-    config.api_keys.remove(&provider);
+    config.clear_provider_key_configured(&provider);
     config
         .save()
         .map_err(|e| ApiError::file_error(e.to_string()))?;
@@ -168,9 +180,13 @@ pub async fn delete_api_key(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn list_models(state: State<'_, AppState>) -> Result<ModelsResponse, ApiError> {
+pub async fn list_models(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<ModelsResponse, ApiError> {
     let config = state.config.read().await;
-    let api_keys = &config.api_keys;
+    let configured_providers = &config.configured_providers;
+    let local_catalog = state.model_manager.get_catalog(&app_handle).await.ok();
 
     let mut providers = Vec::new();
 
@@ -179,7 +195,7 @@ pub async fn list_models(state: State<'_, AppState>) -> Result<ModelsResponse, A
             continue; // Disabled
         }
 
-        let has_key = api_keys.contains_key(provider);
+        let has_key = configured_providers.contains(provider);
         if !has_key {
             continue;
         }
@@ -219,35 +235,23 @@ pub async fn list_models(state: State<'_, AppState>) -> Result<ModelsResponse, A
     }
 
     // Append local AI models — one entry per model in `local_chat_enabled_models`.
-    //
-    // Backward-compat: if `local_chat_enabled_models` is empty but the legacy
-    // `local_chat_enabled` flag is true, fall back to the single-model behaviour so
-    // that users who never toggled the new UI still see their model.
-    let enabled_models: Vec<String> = {
-        let em = &config.settings.local_chat_enabled_models;
-        if em.is_empty() && config.settings.local_chat_enabled {
-            // Legacy path
-            config
-                .settings
-                .local_chat_model_id
-                .iter()
-                .cloned()
-                .collect()
-        } else {
-            em.clone()
-        }
-    };
+    let enabled_models: Vec<String> = config.settings.local_chat_enabled_models.clone();
 
     if !enabled_models.is_empty() {
         let toggles: Vec<ModelToggle> = enabled_models
             .iter()
             .map(|model_id| {
                 let name = get_bundled_model_name(model_id).unwrap_or_else(|| model_id.clone());
+                let vision = local_catalog
+                    .as_ref()
+                    .and_then(|c| c.models.iter().find(|m| m.id == *model_id))
+                    .map(|m| m.vision)
+                    .unwrap_or(false);
                 ModelToggle {
                     id: format!("local:{}", model_id),
                     name,
                     enabled: true,
-                    vision: false,
+                    vision,
                 }
             })
             .collect();
@@ -354,13 +358,18 @@ pub async fn store_custom_provider(
         .await
         .map_err(ApiError::api_key_error)?;
 
-    // Persist
+    // Persist secret in keyring first
+    state
+        .secret_store
+        .set_custom_provider_key(&request.id, &request.api_key)
+        .map_err(ApiError::security_error)?;
+
+    // Persist non-secret config
     let mut config = state.config.write().await;
     let cp = CustomProvider {
         id: request.id.clone(),
         name: request.name.clone(),
         base_url: request.base_url.clone(),
-        api_key: request.api_key.clone(),
         model_id: request.model_id.clone(),
     };
     config.add_custom_provider(cp);
@@ -382,6 +391,11 @@ pub async fn delete_custom_provider(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), ApiError> {
+    state
+        .secret_store
+        .delete_custom_provider_key(&id)
+        .map_err(ApiError::security_error)?;
+
     let mut config = state.config.write().await;
     config.remove_custom_provider(&id);
     config

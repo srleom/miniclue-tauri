@@ -8,6 +8,7 @@ use crate::config::AppConfig;
 use crate::db;
 use crate::services::llama_server::LlamaServerManager;
 use crate::services::model_manager::ModelManager;
+use crate::services::secret_store::SecretStore;
 
 const MAX_CONCURRENT_PROCESSING: usize = 3;
 
@@ -21,6 +22,8 @@ pub struct AppState {
     pub llama_server: Arc<LlamaServerManager>,
     /// Manages model catalog and downloads
     pub model_manager: Arc<ModelManager>,
+    /// Secure storage for API keys (OS keychain/credential manager)
+    pub secret_store: SecretStore,
 }
 
 impl AppState {
@@ -47,8 +50,9 @@ impl AppState {
             .await
             .expect("Failed to ensure default folder exists");
 
-        // Load config
+        // Load config.
         let config = AppConfig::load(&app_data_dir)?;
+        let secret_store = SecretStore::new();
 
         Ok(Self {
             db,
@@ -57,6 +61,7 @@ impl AppState {
             processing_semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_PROCESSING)),
             llama_server: Arc::new(LlamaServerManager::new()),
             model_manager: Arc::new(ModelManager::new()),
+            secret_store,
         })
     }
 }

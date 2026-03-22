@@ -53,7 +53,7 @@ export type DocumentUpdate = {
   accessed_at?: string | null;
 };
 
-// Transform ChatStreamEvent to use snake_case event names for backward compatibility
+// Transform ChatStreamEvent to snake_case event names used by the frontend runtime.
 export type ChatStreamEvent =
   | { event: 'user_message_saved'; data: { message_id: string } }
   | { event: 'chunk'; data: { content: string } }

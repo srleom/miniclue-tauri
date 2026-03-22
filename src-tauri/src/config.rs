@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -7,14 +7,13 @@ pub struct CustomProvider {
     pub id: String,
     pub name: String,
     pub base_url: String,
-    pub api_key: String,
     pub model_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default)]
-    pub api_keys: HashMap<String, String>,
+    pub configured_providers: HashSet<String>,
     #[serde(default)]
     pub model_preferences: HashMap<String, HashMap<String, bool>>,
     #[serde(default)]
@@ -28,7 +27,6 @@ pub struct AppConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppSettings {
     /// Whether the local chat model is enabled (downloaded and configured).
-    /// Kept for backward-compatibility; the authoritative list is `local_chat_enabled_models`.
     #[serde(default)]
     pub local_chat_enabled: bool,
     /// Absolute path to the local chat model GGUF file, if set.
@@ -58,7 +56,7 @@ impl AppConfig {
             Ok(config)
         } else {
             let config = AppConfig {
-                api_keys: HashMap::new(),
+                configured_providers: HashSet::new(),
                 model_preferences: HashMap::new(),
                 settings: AppSettings::default(),
                 custom_providers: Vec::new(),
@@ -82,28 +80,22 @@ impl AppConfig {
 
     /// Restores configuration from a backup
     pub fn restore(&mut self, backup: &AppConfig) {
-        self.api_keys = backup.api_keys.clone();
+        self.configured_providers = backup.configured_providers.clone();
         self.model_preferences = backup.model_preferences.clone();
         self.settings = backup.settings.clone();
         self.custom_providers = backup.custom_providers.clone();
     }
 
-    pub fn get_api_key(&self, provider: &str) -> Option<&String> {
-        self.api_keys.get(provider)
+    pub fn has_provider_key(&self, provider: &str) -> bool {
+        self.configured_providers.contains(provider)
     }
 
-    #[allow(dead_code)]
-    pub fn set_api_key(&mut self, provider: String, api_key: String) {
-        self.api_keys.insert(provider, api_key);
+    pub fn mark_provider_key_configured(&mut self, provider: &str) {
+        self.configured_providers.insert(provider.to_string());
     }
 
-    #[allow(dead_code)]
-    pub fn remove_api_key(&mut self, provider: &str) -> Option<String> {
-        self.api_keys.remove(provider)
-    }
-
-    pub fn has_api_key(&self, provider: &str) -> bool {
-        self.api_keys.contains_key(provider)
+    pub fn clear_provider_key_configured(&mut self, provider: &str) {
+        self.configured_providers.remove(provider);
     }
 
     pub fn get_model_preference(&self, provider: &str, model: &str) -> bool {

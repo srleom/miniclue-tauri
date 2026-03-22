@@ -48,6 +48,10 @@ impl ApiError {
         Self::new("FILE_ERROR", message)
     }
 
+    pub fn security_error(message: impl Into<String>) -> Self {
+        Self::new("SECURITY_ERROR", message)
+    }
+
     #[allow(dead_code)]
     pub fn processing_error(message: impl Into<String>) -> Self {
         Self::new("PROCESSING_ERROR", message)

@@ -13,6 +13,7 @@ use crate::models::chat::{Chat, ChatCreate, ChatUpdate, MessageResponse};
 use crate::rag;
 use crate::services::llama_server::ServerStatus;
 use crate::services::llm;
+use crate::services::secret_store::SecretStore;
 use crate::state::AppState;
 use crate::validation;
 
@@ -164,6 +165,7 @@ struct ModelCredentials {
 fn resolve_model_credentials(
     model: &str,
     config: &AppConfig,
+    secret_store: &SecretStore,
 ) -> Result<ModelCredentials, ApiError> {
     // Local chat server — no API key required
     if model == "local" || model.starts_with("local:") {
@@ -185,9 +187,18 @@ fn resolve_model_credentials(
         let cp = config.get_custom_provider(id).ok_or_else(|| {
             ApiError::invalid_input(format!("Custom provider '{}' not found", id))
         })?;
+        let api_key = secret_store
+            .get_custom_provider_key(id)
+            .map_err(ApiError::security_error)?
+            .ok_or_else(|| {
+                ApiError::api_key_error(format!(
+                    "API key not configured for custom provider {}",
+                    id
+                ))
+            })?;
         return Ok(ModelCredentials {
             model: cp.model_id.clone(),
-            api_key: cp.api_key.clone(),
+            api_key,
             base_url_override: Some(cp.base_url.clone()),
         });
     }
@@ -210,14 +221,16 @@ fn resolve_model_credentials(
         )));
     };
 
-    let api_key = config
-        .get_api_key(provider)
-        .ok_or_else(|| ApiError::api_key_error(format!("API key not configured for {}", provider)))?
-        .clone();
+    let api_key = secret_store
+        .get_provider_key(provider)
+        .map_err(ApiError::security_error)?
+        .ok_or_else(|| {
+            ApiError::api_key_error(format!("API key not configured for {}", provider))
+        })?;
 
     Ok(ModelCredentials {
         model: model.to_string(),
-        api_key,
+        api_key: api_key.clone(),
         base_url_override: None,
     })
 }
@@ -225,7 +238,11 @@ fn resolve_model_credentials(
 /// Map a chat model to the corresponding small aux model for the same provider.
 ///
 /// Returns `None` when the provider is unknown or no API key is configured.
-fn get_aux_model_credentials(model: &str, config: &AppConfig) -> Option<ModelCredentials> {
+fn get_aux_model_credentials(
+    model: &str,
+    config: &AppConfig,
+    secret_store: &SecretStore,
+) -> Option<ModelCredentials> {
     // Local: use same local model (no cloud round-trip)
     if model == "local" || model.starts_with("local:") {
         return Some(ModelCredentials {
@@ -244,9 +261,10 @@ fn get_aux_model_credentials(model: &str, config: &AppConfig) -> Option<ModelCre
     // Custom: use same custom provider model
     if let Some(id) = model.strip_prefix("custom:") {
         let cp = config.get_custom_provider(id)?;
+        let api_key = secret_store.get_custom_provider_key(id).ok()??;
         return Some(ModelCredentials {
             model: cp.model_id.clone(),
-            api_key: cp.api_key.clone(),
+            api_key,
             base_url_override: Some(cp.base_url.clone()),
         });
     }
@@ -266,9 +284,10 @@ fn get_aux_model_credentials(model: &str, config: &AppConfig) -> Option<ModelCre
         return None;
     };
 
-    config.get_api_key(provider).map(|key| ModelCredentials {
+    let key = secret_store.get_provider_key(provider).ok()??;
+    Some(ModelCredentials {
         model: aux_model.to_string(),
-        api_key: key.clone(),
+        api_key: key,
         base_url_override: None,
     })
 }
@@ -364,12 +383,12 @@ pub async fn stream_chat(
 
     // Resolve credentials for the selected model
     let config_guard = state.config.read().await;
-    let credentials = resolve_model_credentials(&model, &config_guard)?;
+    let credentials = resolve_model_credentials(&model, &config_guard, &state.secret_store)?;
 
     // Aux credentials use a small model from the same provider for query rewriting and title generation.
     // For local models this currently maps to the same local llama-server model, which adds a full
     // extra generation pass before every response and significantly increases latency.
-    let aux_credentials = get_aux_model_credentials(&model, &config_guard);
+    let aux_credentials = get_aux_model_credentials(&model, &config_guard, &state.secret_store);
     let is_local_model = model == "local" || model.starts_with("local:");
 
     let local_model_id = if model == "local" {
@@ -753,7 +772,7 @@ async fn generate_chat_title(
         &extract_first_text_from_parts(&first_assistant.parts),
     );
 
-    // Build messages for title generation in legacy format: [system, user]
+    // Build messages for title generation: [system, user]
     let title_messages = vec![
         rag::query_rewriter::Message::text("system", &rag::prompts::title_system_prompt()),
         rag::query_rewriter::Message::text("user", &title_context),
@@ -779,7 +798,7 @@ async fn generate_chat_title(
 
     log::info!("[generate_chat_title] Generated title: \"{}\"", title);
 
-    // Validate and truncate title to match legacy behavior.
+    // Validate and truncate title.
     let truncated_title = truncate_generated_title(&title);
 
     let (saved_title, updated_at): (String, String) = sqlx::query_as(

@@ -115,7 +115,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_build_rag_context_uses_legacy_prompt_and_context_shape() {
+    fn test_build_rag_context_uses_expected_prompt_and_context_shape() {
         let chunks = vec![RetrievedChunk {
             chunk_id: "c1".to_string(),
             text: "Binary search runs in O(log n).".to_string(),

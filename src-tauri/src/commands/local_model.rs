@@ -203,8 +203,9 @@ pub async fn set_local_chat_enabled(
             }
         }
     } else {
-        // Bare toggle with no model_id — legacy path: just flip the flag
-        config.settings.local_chat_enabled = enabled;
+        return Err(ApiError::invalid_input(
+            "model_id is required when toggling local chat",
+        ));
     }
 
     log::debug!(
