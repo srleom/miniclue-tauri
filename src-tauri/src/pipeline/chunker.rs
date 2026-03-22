@@ -1,5 +1,5 @@
 use thiserror::Error;
-use tiktoken_rs::cl100k_base;
+use tokenizers::Tokenizer;
 
 #[derive(Error, Debug)]
 pub enum ChunkerError {
@@ -20,22 +20,26 @@ pub struct ChunkedPage {
     pub chunks: Vec<TextChunk>,
 }
 
+/// Conservative chunk size relative to nomic-embed-text-v1.5's 512 WordPiece token limit.
+/// Using the same BERT WordPiece tokenizer ensures counts are exact — no approximation needed.
 const MAX_CHUNK_TOKENS: usize = 450;
 const OVERLAP_TOKENS: usize = 50;
 
-/// Chunk text using token-based sliding window
-/// - Max chunk size: 450 cl100k tokens. Note: the embed server uses nomic-embed's BERT
-///   WordPiece tokenizer, which can produce more tokens than cl100k BPE for the same text
-///   (especially PDFs with numbers, formulas, or special characters). The embed server's
-///   physical batch size (`--ubatch-size 2048`) provides ample headroom for this variance.
+/// Chunk text using a token-based sliding window with the nomic-embed-text BERT WordPiece
+/// tokenizer. Because WordPiece boundaries always align with Unicode codepoints, decoding any
+/// contiguous slice of token IDs produced by `encode` always yields valid UTF-8 — no retry
+/// loop is needed.
+///
+/// - Max chunk size: 450 WordPiece tokens (ample headroom below the 512-token model limit)
 /// - Overlap: 50 tokens
-pub fn chunk_pages(pages: &[(i64, String)]) -> Result<Vec<ChunkedPage>, ChunkerError> {
-    let bpe = cl100k_base().map_err(|e| ChunkerError::TokenizationError(e.to_string()))?;
-
+pub fn chunk_pages(
+    pages: &[(i64, String)],
+    tokenizer: &Tokenizer,
+) -> Result<Vec<ChunkedPage>, ChunkerError> {
     let mut results = Vec::new();
 
     for (page_number, text) in pages {
-        let chunks = chunk_text(text, &bpe)?;
+        let chunks = chunk_text(text, tokenizer)?;
         results.push(ChunkedPage {
             page_number: *page_number,
             chunks,
@@ -45,65 +49,54 @@ pub fn chunk_pages(pages: &[(i64, String)]) -> Result<Vec<ChunkedPage>, ChunkerE
     Ok(results)
 }
 
-fn chunk_text(text: &str, bpe: &tiktoken_rs::CoreBPE) -> Result<Vec<TextChunk>, ChunkerError> {
+fn chunk_text(text: &str, tokenizer: &Tokenizer) -> Result<Vec<TextChunk>, ChunkerError> {
     if text.trim().is_empty() {
         return Ok(vec![]);
     }
 
-    // Tokenize the entire text
-    let tokens = bpe
-        .encode_with_special_tokens(text)
-        .into_iter()
-        .collect::<Vec<_>>();
+    let encoding = tokenizer
+        .encode(text, false)
+        .map_err(|e| ChunkerError::TokenizationError(e.to_string()))?;
 
-    if tokens.is_empty() {
+    let token_ids = encoding.get_ids();
+
+    if token_ids.is_empty() {
         return Ok(vec![]);
     }
 
-    // If text is small enough, return as single chunk
-    if tokens.len() <= MAX_CHUNK_TOKENS {
+    // If text fits in one chunk, skip the splitting loop entirely
+    if token_ids.len() <= MAX_CHUNK_TOKENS {
         return Ok(vec![TextChunk {
             text: text.to_string(),
-            token_count: tokens.len() as i64,
+            token_count: token_ids.len() as i64,
             chunk_index: 0,
         }]);
     }
 
-    // Split into overlapping chunks
     let mut chunks = Vec::new();
     let mut start_idx = 0;
     let mut chunk_index = 0;
 
-    while start_idx < tokens.len() {
-        let end_idx = (start_idx + MAX_CHUNK_TOKENS).min(tokens.len());
+    while start_idx < token_ids.len() {
+        let end_idx = (start_idx + MAX_CHUNK_TOKENS).min(token_ids.len());
 
-        // BPE tokens can represent partial byte sequences of multibyte Unicode
-        // characters. If the window boundary falls mid-character, decoding the
-        // slice produces invalid UTF-8. Trim one token at a time from the end
-        // until we land on a valid UTF-8 boundary (at most 3–4 retries).
-        let mut adjusted_end = end_idx;
-        let chunk_text = loop {
-            let chunk_tokens = &tokens[start_idx..adjusted_end];
-            match bpe.decode(chunk_tokens.to_vec()) {
-                Ok(text) => break text,
-                Err(_) if adjusted_end > start_idx + 1 => adjusted_end -= 1,
-                Err(e) => return Err(ChunkerError::TokenizationError(e.to_string())),
-            }
-        };
+        let chunk_text = tokenizer
+            .decode(&token_ids[start_idx..end_idx], false)
+            .map_err(|e| ChunkerError::TokenizationError(e.to_string()))?;
 
         chunks.push(TextChunk {
             text: chunk_text,
-            token_count: (adjusted_end - start_idx) as i64,
+            token_count: (end_idx - start_idx) as i64,
             chunk_index,
         });
 
         chunk_index += 1;
 
-        // Move window forward using the adjusted boundary, accounting for overlap
-        if adjusted_end >= tokens.len() {
+        if end_idx >= token_ids.len() {
             break;
         }
-        start_idx = adjusted_end.saturating_sub(OVERLAP_TOKENS);
+
+        start_idx = end_idx.saturating_sub(OVERLAP_TOKENS);
     }
 
     Ok(chunks)
@@ -112,21 +105,47 @@ fn chunk_text(text: &str, bpe: &tiktoken_rs::CoreBPE) -> Result<Vec<TextChunk>, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    fn test_tokenizer() -> Tokenizer {
+        // Load the bundled tokenizer.json from the source tree (available after `cargo build`)
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("models")
+            .join("tokenizer.json");
+        Tokenizer::from_file(&path).expect("tokenizer.json must be present (run `cargo build`)")
+    }
 
     #[test]
     fn test_chunk_empty_text() {
+        let tokenizer = test_tokenizer();
         let pages = vec![(1, String::new())];
-        let result = chunk_pages(&pages).unwrap();
+        let result = chunk_pages(&pages, &tokenizer).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].chunks.len(), 0);
     }
 
     #[test]
     fn test_chunk_short_text() {
+        let tokenizer = test_tokenizer();
         let pages = vec![(1, "This is a short text.".to_string())];
-        let result = chunk_pages(&pages).unwrap();
+        let result = chunk_pages(&pages, &tokenizer).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].chunks.len(), 1);
         assert_eq!(result[0].chunks[0].chunk_index, 0);
+    }
+
+    #[test]
+    fn test_chunk_multibyte_unicode() {
+        let tokenizer = test_tokenizer();
+        // Chinese text — previously caused UTF-8 boundary errors with cl100k BPE
+        let chinese = "中文文本测试，这是一个包含多字节Unicode字符的段落。".repeat(30);
+        let pages = vec![(1, chinese)];
+        let result = chunk_pages(&pages, &tokenizer).unwrap();
+        assert!(result[0].chunks.len() >= 1);
+        // All chunks must be valid UTF-8 strings
+        for chunk in &result[0].chunks {
+            assert!(std::str::from_utf8(chunk.text.as_bytes()).is_ok());
+        }
     }
 }

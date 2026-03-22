@@ -45,10 +45,10 @@ specta = "2.0.0-rc.22"
 tauri-specta = { version = "2.0.0-rc.21", features = ["typescript"] }
 specta-typescript = "0.0.9"
 # PDF processing
-pdf-extract = "0.7"
 pdfium-render = "0.8"
-# Tokenization for chunking
-tiktoken-rs = "0.6"
+# Tokenization for chunking (BERT WordPiece — matches nomic-embed-text-v1.5's tokenizer)
+# fancy-regex is required; it's the pure-Rust regex backend (alternative is onig, a C lib)
+tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"] }
 # Async utilities
 async-stream = "0.3"
 # Base64 encoding for image data URIs

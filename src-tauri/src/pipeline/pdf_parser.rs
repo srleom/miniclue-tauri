@@ -1,4 +1,3 @@
-use pdf_extract::extract_text_from_mem_by_pages;
 use pdfium_render::prelude::*;
 use std::collections::HashSet;
 use std::fs;
@@ -45,14 +44,10 @@ pub fn extract_pages(
         .join("pages");
     fs::create_dir_all(&pages_dir)?;
 
-    // Read the entire PDF into memory for text extraction
+    // Read the entire PDF into memory
     let bytes = fs::read(file_path).map_err(|e| PdfParserError::FileOpenError(e.to_string()))?;
 
-    // Extract text per-page; this avoids relying on form-feed delimiters in flattened text.
-    let page_texts = extract_text_from_mem_by_pages(&bytes)
-        .map_err(|e| PdfParserError::ExtractionError(e.to_string()))?;
-
-    // Load PDF with pdfium for screenshot generation
+    // Load PDF with pdfium for both text extraction and screenshot generation
     let pdfium = bind_pdfium(app_handle)?;
 
     let document = pdfium
@@ -64,17 +59,24 @@ pub fn extract_pages(
         return Ok(Vec::new());
     }
 
-    let normalized_page_texts = normalize_page_texts(page_texts, page_count);
     let mut extracted_pages = Vec::with_capacity(page_count);
 
     // Process every PDF page so page metadata/count stays accurate even for empty-text pages.
-    for (idx, raw_text) in normalized_page_texts.iter().enumerate() {
+    for idx in 0..page_count {
         let page_number = (idx + 1) as i64;
 
-        // Render page screenshot (check if page exists in document)
         let page = document.pages().get(idx as u16).map_err(|e| {
             PdfParserError::ScreenshotError(format!("Failed to get page {}: {}", idx + 1, e))
         })?;
+
+        // Extract text via pdfium; fall back to empty string on any encoding issue rather than
+        // propagating an error that would fail the entire document.
+        let raw_text = page
+            .text()
+            .map(|t| t.all())
+            .unwrap_or_default()
+            .trim()
+            .to_string();
 
         let render_config = PdfRenderConfig::new()
             .set_target_width(1200)
@@ -94,22 +96,12 @@ pub fn extract_pages(
 
         extracted_pages.push(ExtractedPage {
             page_number,
-            raw_text: raw_text.clone(),
+            raw_text,
             screenshot_path: relative_path,
         });
     }
 
     Ok(extracted_pages)
-}
-
-fn normalize_page_texts(page_texts: Vec<String>, page_count: usize) -> Vec<String> {
-    let mut normalized = vec![String::new(); page_count];
-
-    for (idx, text) in page_texts.into_iter().enumerate().take(page_count) {
-        normalized[idx] = text.trim().to_string();
-    }
-
-    normalized
 }
 
 fn screenshot_filename(page_number: i64) -> String {
@@ -243,7 +235,7 @@ fn pdfium_target_subdir() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        normalize_page_texts, pdfium_library_filename, pdfium_target_subdir, screenshot_filename,
+        pdfium_library_filename, pdfium_target_subdir, screenshot_filename,
         screenshot_relative_path,
     };
 
@@ -274,29 +266,5 @@ mod tests {
             screenshot_relative_path("doc-123", "page_7.jpg"),
             "documents/doc-123/pages/page_7.jpg"
         );
-    }
-
-    #[test]
-    fn test_normalize_page_texts_pads_missing_pages() {
-        let normalized = normalize_page_texts(vec!["Page 1 text".to_string()], 3);
-
-        assert_eq!(
-            normalized,
-            vec!["Page 1 text".to_string(), String::new(), String::new()]
-        );
-    }
-
-    #[test]
-    fn test_normalize_page_texts_trims_and_truncates_extra_pages() {
-        let normalized = normalize_page_texts(
-            vec![
-                "  page 1  ".to_string(),
-                "page 2".to_string(),
-                "page 3".to_string(),
-            ],
-            2,
-        );
-
-        assert_eq!(normalized, vec!["page 1".to_string(), "page 2".to_string()]);
     }
 }

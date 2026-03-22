@@ -18,6 +18,11 @@ const LLAMA_BUILD: &str = "b8263";
 const NOMIC_EMBED_MODEL: &str = "nomic-embed-text-v1.5.Q5_K_M.gguf";
 const NOMIC_EMBED_URL: &str = "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q5_K_M.gguf";
 
+// Nomic embed tokenizer (BERT WordPiece vocab, ~600 KB)
+const NOMIC_TOKENIZER_FILE: &str = "tokenizer.json";
+const NOMIC_TOKENIZER_URL: &str =
+    "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5/resolve/main/tokenizer.json";
+
 struct TargetConfig {
     id: &'static str,
     library_filename: &'static str,
@@ -49,6 +54,10 @@ fn main() {
 
     if let Err(error) = ensure_nomic_embed_model() {
         panic!("Failed to provision nomic-embed-text model: {error}");
+    }
+
+    if let Err(error) = ensure_nomic_tokenizer() {
+        panic!("Failed to provision nomic-embed-text tokenizer: {error}");
     }
 
     tauri_build::build();
@@ -513,6 +522,42 @@ fn ensure_nomic_embed_model() -> Result<(), String> {
     println!(
         "cargo:warning=Downloaded nomic-embed-text model to {}",
         model_path.display()
+    );
+
+    Ok(())
+}
+
+fn ensure_nomic_tokenizer() -> Result<(), String> {
+    let manifest_dir = PathBuf::from(
+        env::var("CARGO_MANIFEST_DIR").map_err(|e| format!("Missing CARGO_MANIFEST_DIR: {e}"))?,
+    );
+
+    let models_dir = manifest_dir.join("resources").join("models");
+    let tokenizer_path = models_dir.join(NOMIC_TOKENIZER_FILE);
+
+    if tokenizer_path.exists() {
+        println!(
+            "cargo:warning=Using cached nomic-embed tokenizer at {}",
+            tokenizer_path.display()
+        );
+        return Ok(());
+    }
+
+    fs::create_dir_all(&models_dir).map_err(|e| format!("Failed to create models dir: {e}"))?;
+
+    println!("cargo:warning=Downloading nomic-embed-text tokenizer.json (~600 KB)...");
+
+    let client = Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+
+    download_file(&client, NOMIC_TOKENIZER_URL, &tokenizer_path)
+        .map_err(|e| format!("Failed to download nomic tokenizer: {e}"))?;
+
+    println!(
+        "cargo:warning=Downloaded nomic-embed-text tokenizer to {}",
+        tokenizer_path.display()
     );
 
     Ok(())
