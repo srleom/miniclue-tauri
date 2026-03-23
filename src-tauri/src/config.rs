@@ -15,6 +15,10 @@ pub struct AppConfig {
     #[serde(default)]
     pub configured_providers: HashSet<String>,
     #[serde(default)]
+    pub provider_api_keys_fallback: HashMap<String, String>,
+    #[serde(default)]
+    pub custom_provider_api_keys_fallback: HashMap<String, String>,
+    #[serde(default)]
     pub model_preferences: HashMap<String, HashMap<String, bool>>,
     #[serde(default)]
     pub settings: AppSettings,
@@ -57,6 +61,8 @@ impl AppConfig {
         } else {
             let config = AppConfig {
                 configured_providers: HashSet::new(),
+                provider_api_keys_fallback: HashMap::new(),
+                custom_provider_api_keys_fallback: HashMap::new(),
                 model_preferences: HashMap::new(),
                 settings: AppSettings::default(),
                 custom_providers: Vec::new(),
@@ -81,6 +87,8 @@ impl AppConfig {
     /// Restores configuration from a backup
     pub fn restore(&mut self, backup: &AppConfig) {
         self.configured_providers = backup.configured_providers.clone();
+        self.provider_api_keys_fallback = backup.provider_api_keys_fallback.clone();
+        self.custom_provider_api_keys_fallback = backup.custom_provider_api_keys_fallback.clone();
         self.model_preferences = backup.model_preferences.clone();
         self.settings = backup.settings.clone();
         self.custom_providers = backup.custom_providers.clone();
@@ -96,6 +104,33 @@ impl AppConfig {
 
     pub fn clear_provider_key_configured(&mut self, provider: &str) {
         self.configured_providers.remove(provider);
+        self.provider_api_keys_fallback.remove(provider);
+    }
+
+    pub fn set_provider_api_key_fallback(&mut self, provider: &str, api_key: String) {
+        self.provider_api_keys_fallback
+            .insert(provider.to_string(), api_key);
+    }
+
+    pub fn get_provider_api_key_fallback(&self, provider: &str) -> Option<&str> {
+        self.provider_api_keys_fallback
+            .get(provider)
+            .map(std::string::String::as_str)
+    }
+
+    pub fn set_custom_provider_api_key_fallback(&mut self, provider_id: &str, api_key: String) {
+        self.custom_provider_api_keys_fallback
+            .insert(provider_id.to_string(), api_key);
+    }
+
+    pub fn get_custom_provider_api_key_fallback(&self, provider_id: &str) -> Option<&str> {
+        self.custom_provider_api_keys_fallback
+            .get(provider_id)
+            .map(std::string::String::as_str)
+    }
+
+    pub fn clear_custom_provider_api_key_fallback(&mut self, provider_id: &str) {
+        self.custom_provider_api_keys_fallback.remove(provider_id);
     }
 
     pub fn get_model_preference(&self, provider: &str, model: &str) -> bool {

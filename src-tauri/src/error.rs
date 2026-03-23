@@ -48,6 +48,7 @@ impl ApiError {
         Self::new("FILE_ERROR", message)
     }
 
+    #[allow(dead_code)]
     pub fn security_error(message: impl Into<String>) -> Self {
         Self::new("SECURITY_ERROR", message)
     }

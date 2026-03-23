@@ -46,6 +46,7 @@ pub struct ModelToggle {
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ProviderModels {
     pub provider: String,
+    pub kind: String,
     pub models: Vec<ModelToggle>,
 }
 

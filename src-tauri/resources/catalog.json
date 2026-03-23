@@ -1,6 +1,36 @@
 {
   "schema_version": 1,
   "updated_at": "2026-03-11",
+  "cloud_models": [
+    { "provider": "openai", "id": "gpt-5.4", "name": "GPT-5.4", "vision": true, "is_default": false },
+    { "provider": "openai", "id": "gpt-5.3-chat-latest", "name": "GPT-5.3 chat latest", "vision": true, "is_default": false },
+    { "provider": "openai", "id": "gpt-5.2", "name": "GPT-5.2", "vision": true, "is_default": false },
+    { "provider": "openai", "id": "gpt-5.2-chat-latest", "name": "GPT-5.2 chat latest", "vision": true, "is_default": false },
+    { "provider": "openai", "id": "gpt-5.1", "name": "GPT-5.1", "vision": true, "is_default": true },
+    { "provider": "openai", "id": "gpt-5.1-chat-latest", "name": "GPT-5.1 chat latest", "vision": true, "is_default": false },
+    { "provider": "openai", "id": "gpt-5", "name": "GPT-5", "vision": true, "is_default": false },
+    { "provider": "openai", "id": "gpt-5-chat-latest", "name": "GPT-5 chat latest", "vision": true, "is_default": false },
+    { "provider": "openai", "id": "gpt-5-mini", "name": "GPT-5 mini", "vision": true, "is_default": false },
+    { "provider": "openai", "id": "gpt-5-nano", "name": "GPT-5 nano", "vision": true, "is_default": false },
+    { "provider": "openai", "id": "gpt-4.1", "name": "GPT-4.1", "vision": true, "is_default": true },
+    { "provider": "openai", "id": "gpt-4.1-mini", "name": "GPT-4.1 mini", "vision": true, "is_default": true },
+    { "provider": "openai", "id": "gpt-4.1-nano", "name": "GPT-4.1 nano", "vision": true, "is_default": false },
+    { "provider": "openai", "id": "gpt-4o", "name": "GPT-4o", "vision": true, "is_default": false },
+    { "provider": "openai", "id": "gpt-4o-mini", "name": "GPT-4o mini", "vision": true, "is_default": false },
+
+    { "provider": "gemini", "id": "gemini-3.1-pro-preview", "name": "Gemini 3.1 Pro Preview", "vision": true, "is_default": false },
+    { "provider": "gemini", "id": "gemini-3-flash-preview", "name": "Gemini 3 Flash Preview", "vision": true, "is_default": true },
+    { "provider": "gemini", "id": "gemini-3.1-flash-lite-preview", "name": "Gemini 3.1 Flash Lite Preview", "vision": true, "is_default": true },
+
+    { "provider": "anthropic", "id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "vision": true, "is_default": true },
+    { "provider": "anthropic", "id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "vision": true, "is_default": true },
+
+    { "provider": "xai", "id": "grok-4-1-fast-reasoning", "name": "Grok 4.1 Fast (Reasoning)", "vision": true, "is_default": true },
+    { "provider": "xai", "id": "grok-4-1-fast-non-reasoning", "name": "Grok 4.1 Fast (Non-reasoning)", "vision": true, "is_default": true },
+
+    { "provider": "deepseek", "id": "deepseek-chat", "name": "DeepSeek-V3.2 (Non-thinking Mode)", "vision": false, "is_default": true },
+    { "provider": "deepseek", "id": "deepseek-reasoner", "name": "DeepSeek-V3.2 (Thinking Mode)", "vision": false, "is_default": true }
+  ],
   "models": [
     {
       "id": "qwen3-0b6-q8",

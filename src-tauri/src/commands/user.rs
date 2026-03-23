@@ -1,6 +1,6 @@
 use tauri::{AppHandle, State};
 
-use crate::catalog::{DEFAULT_MODELS, MODEL_CATALOG};
+use crate::catalog;
 use crate::config::CustomProvider;
 use crate::db;
 use crate::error::ApiError;
@@ -117,21 +117,34 @@ pub async fn store_api_key(
     let mut config = state.config.write().await;
     let config_backup = config.backup();
 
-    // Store API key in OS keyring first
-    state
-        .secret_store
-        .set_provider_key(&provider, &api_key)
-        .map_err(ApiError::security_error)?;
+    // Store API key in OS keyring first; if unavailable, use config fallback storage.
+    let keyring_ok = match state.secret_store.set_provider_key(&provider, &api_key) {
+        Ok(()) => true,
+        Err(e) => {
+            log::warn!(
+                "Keyring store failed for provider {}: {}. Falling back to config storage.",
+                provider,
+                e
+            );
+            false
+        }
+    };
 
-    // Keep provider marker in config (non-secret)
     println!("[store_api_key] Saving provider marker to config file...");
     config.mark_provider_key_configured(&provider);
+    if !keyring_ok {
+        config.set_provider_api_key_fallback(&provider, api_key.clone());
+    } else {
+        config.provider_api_keys_fallback.remove(&provider);
+    }
 
     // Initialize default models if this is the first key for this provider
     if !already_has_key {
-        if let Some(default_models) = DEFAULT_MODELS.get(provider.as_str()) {
+        let default_models = catalog::cloud_default_models_for_provider(&provider);
+        if !default_models.is_empty() {
             println!("[store_api_key] Initializing default models for new provider");
-            config.init_default_models(&provider, default_models);
+            let refs: Vec<&str> = default_models.iter().map(String::as_str).collect();
+            config.init_default_models(&provider, &refs);
         }
     }
 
@@ -158,11 +171,14 @@ pub async fn delete_api_key(
     state: State<'_, AppState>,
     provider: String,
 ) -> Result<ApiKeyResponse, ApiError> {
-    // Remove from keyring first
-    state
-        .secret_store
-        .delete_provider_key(&provider)
-        .map_err(ApiError::security_error)?;
+    // Remove from keyring (best-effort; fallback store is cleared from config below)
+    if let Err(e) = state.secret_store.delete_provider_key(&provider) {
+        log::warn!(
+            "Failed to delete provider key from keyring for {}: {}",
+            provider,
+            e
+        );
+    }
 
     // Remove from config file
     let mut config = state.config.write().await;
@@ -200,22 +216,24 @@ pub async fn list_models(
             continue;
         }
 
-        if let Some(models) = MODEL_CATALOG.get(provider) {
+        let models = catalog::cloud_models_for_provider(provider);
+        if !models.is_empty() {
             let toggles: Vec<ModelToggle> = models
                 .iter()
-                .map(|(id, name, vision)| {
-                    let enabled = config.get_model_preference(provider, id);
+                .map(|m| {
+                    let enabled = config.get_model_preference(provider, &m.id);
                     ModelToggle {
-                        id: id.to_string(),
-                        name: name.to_string(),
+                        id: m.id.clone(),
+                        name: m.name.clone(),
                         enabled,
-                        vision: *vision,
+                        vision: m.vision,
                     }
                 })
                 .collect();
 
             providers.push(ProviderModels {
                 provider: provider.to_string(),
+                kind: "cloud".to_string(),
                 models: toggles,
             });
         }
@@ -225,6 +243,7 @@ pub async fn list_models(
     for cp in &config.custom_providers {
         providers.push(ProviderModels {
             provider: format!("custom:{}", cp.id),
+            kind: "custom".to_string(),
             models: vec![ModelToggle {
                 id: format!("custom:{}", cp.id),
                 name: cp.name.clone(),
@@ -259,6 +278,7 @@ pub async fn list_models(
         if !toggles.is_empty() {
             providers.push(ProviderModels {
                 provider: "local".to_string(),
+                kind: "local".to_string(),
                 models: toggles,
             });
         }
@@ -282,20 +302,12 @@ pub async fn update_model_preference(
     }
 
     // Validate model exists in catalog
-    let catalog_models = MODEL_CATALOG
-        .get(provider.as_str())
-        .ok_or_else(|| ApiError::invalid_input(format!("Unsupported provider: {}", provider)))?;
-
-    let (model_name, model_vision) = catalog_models
-        .iter()
-        .find(|(id, _, _)| *id == model)
-        .map(|(_, name, vision)| (*name, *vision))
-        .ok_or_else(|| {
-            ApiError::invalid_input(format!(
-                "Unsupported model for provider {}: {}",
-                provider, model
-            ))
-        })?;
+    let model_entry = catalog::cloud_model_exists(&provider, &model).ok_or_else(|| {
+        ApiError::invalid_input(format!(
+            "Unsupported model for provider {}: {}",
+            provider, model
+        ))
+    })?;
 
     // Update config
     let mut config = state.config.write().await;
@@ -306,9 +318,9 @@ pub async fn update_model_preference(
 
     Ok(ModelToggle {
         id: model,
-        name: model_name.to_string(),
+        name: model_entry.name,
         enabled,
-        vision: model_vision,
+        vision: model_entry.vision,
     })
 }
 
@@ -358,11 +370,21 @@ pub async fn store_custom_provider(
         .await
         .map_err(ApiError::api_key_error)?;
 
-    // Persist secret in keyring first
-    state
+    // Persist secret in keyring first; if unavailable, use config fallback storage.
+    let keyring_ok = match state
         .secret_store
         .set_custom_provider_key(&request.id, &request.api_key)
-        .map_err(ApiError::security_error)?;
+    {
+        Ok(()) => true,
+        Err(e) => {
+            log::warn!(
+                "Keyring store failed for custom provider {}: {}. Falling back to config storage.",
+                request.id,
+                e
+            );
+            false
+        }
+    };
 
     // Persist non-secret config
     let mut config = state.config.write().await;
@@ -373,6 +395,11 @@ pub async fn store_custom_provider(
         model_id: request.model_id.clone(),
     };
     config.add_custom_provider(cp);
+    if !keyring_ok {
+        config.set_custom_provider_api_key_fallback(&request.id, request.api_key.clone());
+    } else {
+        config.clear_custom_provider_api_key_fallback(&request.id);
+    }
     config
         .save()
         .map_err(|e| ApiError::file_error(e.to_string()))?;
@@ -391,13 +418,17 @@ pub async fn delete_custom_provider(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), ApiError> {
-    state
-        .secret_store
-        .delete_custom_provider_key(&id)
-        .map_err(ApiError::security_error)?;
+    if let Err(e) = state.secret_store.delete_custom_provider_key(&id) {
+        log::warn!(
+            "Failed to delete custom provider key from keyring for {}: {}",
+            id,
+            e
+        );
+    }
 
     let mut config = state.config.write().await;
     config.remove_custom_provider(&id);
+    config.clear_custom_provider_api_key_fallback(&id);
     config
         .save()
         .map_err(|e| ApiError::file_error(e.to_string()))?;

@@ -187,15 +187,18 @@ fn resolve_model_credentials(
         let cp = config.get_custom_provider(id).ok_or_else(|| {
             ApiError::invalid_input(format!("Custom provider '{}' not found", id))
         })?;
-        let api_key = secret_store
-            .get_custom_provider_key(id)
-            .map_err(ApiError::security_error)?
-            .ok_or_else(|| {
-                ApiError::api_key_error(format!(
-                    "API key not configured for custom provider {}",
-                    id
-                ))
-            })?;
+        let api_key = match secret_store.get_custom_provider_key(id) {
+            Ok(Some(key)) => key,
+            Ok(None) | Err(_) => config
+                .get_custom_provider_api_key_fallback(id)
+                .ok_or_else(|| {
+                    ApiError::api_key_error(format!(
+                        "API key not configured for custom provider {}",
+                        id
+                    ))
+                })?
+                .to_string(),
+        };
         return Ok(ModelCredentials {
             model: cp.model_id.clone(),
             api_key,
@@ -221,12 +224,15 @@ fn resolve_model_credentials(
         )));
     };
 
-    let api_key = secret_store
-        .get_provider_key(provider)
-        .map_err(ApiError::security_error)?
-        .ok_or_else(|| {
-            ApiError::api_key_error(format!("API key not configured for {}", provider))
-        })?;
+    let api_key = match secret_store.get_provider_key(provider) {
+        Ok(Some(key)) => key,
+        Ok(None) | Err(_) => config
+            .get_provider_api_key_fallback(provider)
+            .ok_or_else(|| {
+                ApiError::api_key_error(format!("API key not configured for {}", provider))
+            })?
+            .to_string(),
+    };
 
     Ok(ModelCredentials {
         model: model.to_string(),
@@ -261,7 +267,15 @@ fn get_aux_model_credentials(
     // Custom: use same custom provider model
     if let Some(id) = model.strip_prefix("custom:") {
         let cp = config.get_custom_provider(id)?;
-        let api_key = secret_store.get_custom_provider_key(id).ok()??;
+        let api_key = secret_store
+            .get_custom_provider_key(id)
+            .ok()
+            .flatten()
+            .or_else(|| {
+                config
+                    .get_custom_provider_api_key_fallback(id)
+                    .map(str::to_string)
+            })?;
         return Some(ModelCredentials {
             model: cp.model_id.clone(),
             api_key,
@@ -284,7 +298,15 @@ fn get_aux_model_credentials(
         return None;
     };
 
-    let key = secret_store.get_provider_key(provider).ok()??;
+    let key = secret_store
+        .get_provider_key(provider)
+        .ok()
+        .flatten()
+        .or_else(|| {
+            config
+                .get_provider_api_key_fallback(provider)
+                .map(str::to_string)
+        })?;
     Some(ModelCredentials {
         model: aux_model.to_string(),
         api_key: key,
@@ -577,7 +599,7 @@ pub async fn stream_chat(
     let supports_vision = if model == "local" || model.starts_with("local:") {
         local_model_supports_vision
     } else {
-        crate::catalog::model_supports_vision(&request.model)
+        crate::catalog::cloud_model_supports_vision(&request.model)
     };
 
     if supports_vision {
