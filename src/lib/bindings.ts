@@ -491,7 +491,7 @@ mmprojFilename: string | null;
 mmprojSizeBytes: number | null }
 export type ModelToggle = { id: string; name: string; enabled: boolean; vision: boolean }
 export type ModelsResponse = { providers: ProviderModels[] }
-export type ProviderModels = { provider: string; models: ModelToggle[] }
+export type ProviderModels = { provider: string; kind: string; models: ModelToggle[] }
 export type RecentDocument = { document_id: string; folder_id: string; title: string }
 export type RecentDocumentsResponse = { documents: RecentDocument[]; total_count: number }
 export type StreamChatRequest = { document_id: string; chat_id: string; message: string; model: string; 

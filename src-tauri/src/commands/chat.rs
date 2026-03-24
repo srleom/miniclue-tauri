@@ -314,6 +314,27 @@ fn get_aux_model_credentials(
     })
 }
 
+fn looks_like_placeholder_api_key(api_key: &str) -> bool {
+    let trimmed = api_key.trim().to_ascii_lowercase();
+    if trimmed.is_empty() {
+        return true;
+    }
+    [
+        "your_api_key",
+        "your-api-key",
+        "api_key",
+        "api-key",
+        "replace_me",
+        "placeholder",
+        "dummy",
+        "mock",
+        "test",
+        "xxx",
+    ]
+    .iter()
+    .any(|needle| trimmed == *needle || trimmed.contains(needle))
+}
+
 fn get_provider_name(model: &str) -> &'static str {
     if model == "local" || model.starts_with("local:") {
         "local"
@@ -406,6 +427,14 @@ pub async fn stream_chat(
     // Resolve credentials for the selected model
     let config_guard = state.config.read().await;
     let credentials = resolve_model_credentials(&model, &config_guard, &state.secret_store)?;
+    if !model.starts_with("local:")
+        && model != "local"
+        && looks_like_placeholder_api_key(&credentials.api_key)
+    {
+        return Err(ApiError::api_key_error(
+            "API key appears to be a placeholder value. Please re-enter your real key in Settings.",
+        ));
+    }
 
     // Aux credentials use a small model from the same provider for query rewriting and title generation.
     // For local models this currently maps to the same local llama-server model, which adds a full

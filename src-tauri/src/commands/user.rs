@@ -126,6 +126,7 @@ pub async fn store_api_key(
                 provider,
                 e
             );
+            let _ = state.secret_store.delete_provider_key(&provider);
             false
         }
     };
@@ -382,6 +383,7 @@ pub async fn store_custom_provider(
                 request.id,
                 e
             );
+            let _ = state.secret_store.delete_custom_provider_key(&request.id);
             false
         }
     };
