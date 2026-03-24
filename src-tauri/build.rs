@@ -780,7 +780,13 @@ fn fix_macos_dylib_paths(binaries_dir: &Path, triple: &str) -> Result<(), String
         }
     }
 
-    // 3. Fix llama-server binary to use @loader_path for dylibs
+    // 3. Fix llama-server binary to load dylibs from app Resources/binaries.
+    //
+    // In bundled macOS apps, sidecars are placed under Contents/MacOS while
+    // bundle resources are under Contents/Resources. We package companion
+    // dylibs via tauri.macos.conf.json as "binaries/*.dylib", so the correct
+    // runtime path from the sidecar is:
+    //   @loader_path/../Resources/binaries/<libname>.dylib
     let sidecar_name = format!("llama-server-{}", triple);
     let sidecar = binaries_dir.join(&sidecar_name);
 
@@ -804,7 +810,7 @@ fn fix_macos_dylib_paths(binaries_dir: &Path, triple: &str) -> Result<(), String
                             let result = Command::new("install_name_tool")
                                 .arg("-change")
                                 .arg(old_path)
-                                .arg(format!("@loader_path/{}", filename))
+                                .arg(format!("@loader_path/../Resources/binaries/{}", filename))
                                 .arg(&sidecar)
                                 .status();
 

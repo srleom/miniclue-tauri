@@ -384,7 +384,17 @@ async fn spawn_sidecar(
     // On macOS, dylibs now use @loader_path (fixed in build.rs via install_name_tool).
     // On Windows, DLLs are resolved from the same directory as the executable.
     // No environment variables needed.
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    let cmd = {
+        let lib_dir = resolve_sidecar_lib_dir_macos(app_handle);
+        log::debug!("[spawn_sidecar] DYLD_LIBRARY_PATH={:?}", lib_dir);
+        match lib_dir {
+            Some(dir) => sidecar_cmd.args(args).env("DYLD_LIBRARY_PATH", dir),
+            None => sidecar_cmd.args(args),
+        }
+    };
+
+    #[cfg(all(not(target_os = "linux"), not(target_os = "macos")))]
     let cmd = sidecar_cmd.args(args);
 
     let (rx, child) = cmd
@@ -460,6 +470,25 @@ fn resolve_sidecar_lib_dir(app_handle: &AppHandle) -> Option<String> {
     }
 
     log::warn!("[spawn_sidecar] could not locate libllama.so — llama-server may fail to start");
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_sidecar_lib_dir_macos(app_handle: &AppHandle) -> Option<String> {
+    // Bundled app: dylibs are resources under Contents/Resources/binaries.
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        let path = resource_dir.join("binaries");
+        if path.join("libllama.dylib").exists() {
+            return Some(path.to_string_lossy().into_owned());
+        }
+    }
+
+    // Dev fallback.
+    let dev_binaries = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("binaries");
+    if dev_binaries.join("libllama.dylib").exists() {
+        return Some(dev_binaries.to_string_lossy().into_owned());
+    }
+
     None
 }
 
