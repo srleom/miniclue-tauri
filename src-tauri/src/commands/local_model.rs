@@ -203,6 +203,33 @@ pub async fn set_local_chat_enabled(
             config.settings.local_chat_model_id = Some(mid.clone());
             config.settings.local_chat_model_path = status.path;
             config.settings.local_chat_mmproj_path = status.mmproj_path;
+
+            if config.settings.local_chat_model_path.is_none() {
+                return Err(ApiError::invalid_input(format!(
+                    "Model '{}' GGUF file not found in app data models directory",
+                    mid
+                )));
+            }
+
+            if config.settings.local_chat_mmproj_path.is_none() {
+                let catalog = state
+                    .model_manager
+                    .get_catalog(&app_handle)
+                    .await
+                    .map_err(ApiError::internal_error)?;
+                let is_vision = catalog
+                    .models
+                    .iter()
+                    .find(|m| m.id == *mid)
+                    .map(|m| m.vision)
+                    .unwrap_or(false);
+                if is_vision {
+                    return Err(ApiError::invalid_input(format!(
+                        "Vision model '{}' requires mmproj file, but it was not found",
+                        mid
+                    )));
+                }
+            }
         } else {
             // Remove from enabled set
             config

@@ -482,9 +482,25 @@ pub async fn stream_chat(
                 let mmproj_path = cfg.settings.local_chat_mmproj_path.clone();
                 (model_path, mmproj_path)
             };
+
+            // If vision model is selected but mmproj path is stale/missing, recover from disk.
+            let resolved_mmproj = if local_model_supports_vision {
+                match mmproj_path {
+                    Some(ref p) if std::path::Path::new(p).exists() => Some(p.clone()),
+                    _ => local_model_id.as_deref().and_then(|id| {
+                        state
+                            .model_manager
+                            .get_model_status(id, &app_handle)
+                            .ok()
+                            .and_then(|s| s.mmproj_path)
+                    }),
+                }
+            } else {
+                None
+            };
             state
                 .llama_server
-                .start_chat_server(&app_handle, &model_path, mmproj_path.as_deref())
+                .start_chat_server(&app_handle, &model_path, resolved_mmproj.as_deref())
                 .await
                 .map_err(|e| {
                     ApiError::internal_error(format!("Failed to restart local chat server: {e}"))

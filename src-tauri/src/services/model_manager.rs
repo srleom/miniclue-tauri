@@ -10,7 +10,6 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -158,8 +157,6 @@ impl ModelManager {
         model_id: &str,
         app_handle: &AppHandle,
     ) -> Result<LocalModelStatus, String> {
-        migrate_legacy_model_dir(app_handle, model_id)?;
-
         // We need to find the filename for this model from the catalog to check existence
         // For now, check if any .gguf file exists in the model directory
         let model_dir = model_dir(app_handle, model_id)?;
@@ -256,8 +253,6 @@ impl ModelManager {
         hf_filename: &str,
         app_handle: &AppHandle,
     ) -> Result<String, String> {
-        migrate_legacy_model_dir(app_handle, model_id)?;
-
         let dest_dir = model_dir(app_handle, model_id)?;
         std::fs::create_dir_all(&dest_dir)
             .map_err(|e| format!("Failed to create model dir: {e}"))?;
@@ -338,13 +333,6 @@ impl ModelManager {
             std::fs::remove_dir_all(&dir)
                 .map_err(|e| format!("Failed to delete model dir: {e}"))?;
             log::info!("Deleted model {model_id}");
-        }
-
-        let legacy_dir = legacy_model_dir(app_handle, model_id)?;
-        if legacy_dir.exists() {
-            std::fs::remove_dir_all(&legacy_dir)
-                .map_err(|e| format!("Failed to delete legacy model dir: {e}"))?;
-            log::info!("Deleted legacy model {model_id}");
         }
 
         Ok(())
@@ -435,94 +423,6 @@ fn models_root_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {e}"))?;
     Ok(app_data.join("models"))
-}
-
-fn legacy_models_root_dir(app_handle: &AppHandle) -> Result<PathBuf, String> {
-    let app_cache = app_handle
-        .path()
-        .app_cache_dir()
-        .map_err(|e| format!("Failed to get app cache dir: {e}"))?;
-    Ok(app_cache.join("models"))
-}
-
-fn legacy_model_dir(app_handle: &AppHandle, model_id: &str) -> Result<PathBuf, String> {
-    Ok(legacy_models_root_dir(app_handle)?.join(model_id))
-}
-
-fn migrate_legacy_model_dir(app_handle: &AppHandle, model_id: &str) -> Result<(), String> {
-    let current_dir = model_dir(app_handle, model_id)?;
-    let legacy_dir = legacy_model_dir(app_handle, model_id)?;
-
-    if current_dir.exists() || !legacy_dir.exists() {
-        return Ok(());
-    }
-
-    if let Some(parent) = current_dir.parent() {
-        fs::create_dir_all(parent).map_err(|e| {
-            format!(
-                "Failed to create model parent dir {}: {e}",
-                parent.display()
-            )
-        })?;
-    }
-
-    match fs::rename(&legacy_dir, &current_dir) {
-        Ok(()) => {
-            log::info!(
-                "Migrated model '{}' from {} to {}",
-                model_id,
-                legacy_dir.display(),
-                current_dir.display()
-            );
-            Ok(())
-        }
-        Err(rename_err) => {
-            copy_dir_recursive(&legacy_dir, &current_dir)?;
-            fs::remove_dir_all(&legacy_dir).map_err(|e| {
-                format!(
-                    "Copied model '{}' to new location but failed to remove legacy dir {}: {e}",
-                    model_id,
-                    legacy_dir.display()
-                )
-            })?;
-            log::info!(
-                "Migrated model '{}' via copy fallback (rename failed: {})",
-                model_id,
-                rename_err
-            );
-            Ok(())
-        }
-    }
-}
-
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
-    fs::create_dir_all(dst).map_err(|e| format!("Failed to create dir {}: {e}", dst.display()))?;
-
-    let entries =
-        fs::read_dir(src).map_err(|e| format!("Failed to read dir {}: {e}", src.display()))?;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read dir entry: {e}"))?;
-        let ty = entry
-            .file_type()
-            .map_err(|e| format!("Failed to read file type: {e}"))?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-
-        if ty.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else if ty.is_file() {
-            fs::copy(&src_path, &dst_path).map_err(|e| {
-                format!(
-                    "Failed to copy {} to {}: {e}",
-                    src_path.display(),
-                    dst_path.display()
-                )
-            })?;
-        }
-    }
-
-    Ok(())
 }
 
 fn find_gguf_in_dir(dir: &Path) -> Option<PathBuf> {

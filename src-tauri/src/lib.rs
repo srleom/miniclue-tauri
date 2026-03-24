@@ -15,33 +15,6 @@ mod validation;
 use state::AppState;
 use tauri::Manager;
 
-fn migrate_legacy_model_paths_in_config(state: &AppState, app_handle: &tauri::AppHandle) {
-    let Ok(app_data_dir) = app_handle.path().app_data_dir() else {
-        log::warn!("[startup] failed to resolve app_data_dir for model-path migration");
-        return;
-    };
-    let Ok(app_cache_dir) = app_handle.path().app_cache_dir() else {
-        log::warn!("[startup] failed to resolve app_cache_dir for model-path migration");
-        return;
-    };
-
-    let from_root = app_cache_dir.join("models");
-    let to_root = app_data_dir.join("models");
-
-    let mut config = state.config.blocking_write();
-    if config.rewrite_local_model_paths(&from_root, &to_root) {
-        if let Err(e) = config.save() {
-            log::warn!("[startup] failed saving migrated local model paths: {}", e);
-        } else {
-            log::info!(
-                "[startup] migrated local model paths in config from {} to {}",
-                from_root.display(),
-                to_root.display()
-            );
-        }
-    }
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Export bindings in debug mode before starting app
@@ -74,9 +47,6 @@ pub fn run() {
             // The app window opens immediately; the server warms up in ~1-2s.
             {
                 let state = app.handle().state::<AppState>();
-
-                // Keep config paths aligned with the new model storage location.
-                migrate_legacy_model_paths_in_config(&state, &app.handle());
 
                 state
                     .llama_server
