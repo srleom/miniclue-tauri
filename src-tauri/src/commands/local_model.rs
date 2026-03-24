@@ -59,6 +59,19 @@ pub async fn get_local_model_status(
         .map_err(ApiError::internal_error)
 }
 
+/// Return the absolute path to the shared local-model storage directory.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_models_storage_path(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<String, ApiError> {
+    state
+        .model_manager
+        .get_models_storage_dir(&app_handle)
+        .map_err(ApiError::internal_error)
+}
+
 // ---------------------------------------------------------------------------
 // Download / Delete
 // ---------------------------------------------------------------------------

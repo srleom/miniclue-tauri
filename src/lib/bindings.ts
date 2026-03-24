@@ -266,6 +266,17 @@ async getLocalModelStatus(modelId: string) : Promise<Result<LocalModelStatus, Ap
 }
 },
 /**
+ * Return the absolute path to the shared local-model storage directory.
+ */
+async getModelsStoragePath() : Promise<Result<string, ApiError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_models_storage_path") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Start downloading a model in the background with progress events.
  * 
  * Emits `"model-download-progress"` events during download.

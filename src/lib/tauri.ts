@@ -353,6 +353,10 @@ export const getLocalModelStatus = async (
   return unwrap(await commands.getLocalModelStatus(modelId));
 };
 
+export const getModelsStoragePath = async (): Promise<string> => {
+  return unwrap(await commands.getModelsStoragePath());
+};
+
 export const downloadLocalModel = async (modelId: string): Promise<string> => {
   return unwrap(await commands.downloadLocalModel(modelId));
 };

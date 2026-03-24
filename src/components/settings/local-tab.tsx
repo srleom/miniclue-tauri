@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { openPath } from '@tauri-apps/plugin-opener';
 import {
   AlertCircle,
   CheckCircle2,
@@ -14,7 +15,6 @@ import {
   useDownload,
   useDownloadState,
 } from '@/components/providers/download-provider';
-import { Progress } from '@/components/ui/progress';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,11 +28,13 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { useLocalModelCatalog } from '@/hooks/use-local-model-catalog';
 import {
   deleteLocalModel,
   getLlamaServerStatus,
+  getModelsStoragePath,
   listModels,
   setLocalChatEnabled,
 } from '@/lib/tauri';
@@ -115,6 +117,12 @@ export function LocalTab() {
   });
 
   const serverStatus = serverStatusQuery.data ?? null;
+
+  const modelsStoragePathQuery = useQuery({
+    queryKey: ['modelsStoragePath'],
+    queryFn: getModelsStoragePath,
+    staleTime: 60 * 60 * 1000,
+  });
 
   const enabledModelIds = React.useMemo(() => {
     const localProvider = modelsQuery.data?.providers.find(
@@ -217,6 +225,22 @@ export function LocalTab() {
         <p className="text-muted-foreground mt-2">
           Run AI models fully on your device.
         </p>
+        {modelsStoragePathQuery.data && (
+          <div className="mt-3 flex items-center gap-2">
+            <p className="text-muted-foreground truncate text-xs">
+              Models folder: {modelsStoragePathQuery.data}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => void openPath(modelsStoragePathQuery.data)}
+            >
+              Open Folder
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="mt-8 space-y-8">

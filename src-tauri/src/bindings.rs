@@ -53,6 +53,7 @@ pub fn export_bindings() {
             commands::local_model::get_model_catalog,
             commands::local_model::get_recommended_model_id,
             commands::local_model::get_local_model_status,
+            commands::local_model::get_models_storage_path,
             commands::local_model::download_local_model,
             commands::local_model::delete_local_model,
             commands::local_model::set_local_chat_enabled,

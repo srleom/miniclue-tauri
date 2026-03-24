@@ -182,4 +182,37 @@ impl AppConfig {
         self.custom_providers.retain(|p| p.id != id);
         self.custom_providers.len() < len_before
     }
+
+    /// Rewrites local model paths from a legacy root to a new root.
+    /// Returns true when at least one path was updated.
+    pub fn rewrite_local_model_paths(&mut self, from_root: &Path, to_root: &Path) -> bool {
+        let mut changed = false;
+
+        if let Some(updated) = rewrite_path_under_root(
+            self.settings.local_chat_model_path.as_deref(),
+            from_root,
+            to_root,
+        ) {
+            self.settings.local_chat_model_path = Some(updated);
+            changed = true;
+        }
+
+        if let Some(updated) = rewrite_path_under_root(
+            self.settings.local_chat_mmproj_path.as_deref(),
+            from_root,
+            to_root,
+        ) {
+            self.settings.local_chat_mmproj_path = Some(updated);
+            changed = true;
+        }
+
+        changed
+    }
+}
+
+fn rewrite_path_under_root(path: Option<&str>, from_root: &Path, to_root: &Path) -> Option<String> {
+    let raw = path?;
+    let original = Path::new(raw);
+    let rel = original.strip_prefix(from_root).ok()?;
+    Some(to_root.join(rel).to_string_lossy().into_owned())
 }
