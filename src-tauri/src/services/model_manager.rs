@@ -531,7 +531,10 @@ fn find_gguf_in_dir(dir: &Path) -> Option<PathBuf> {
         .filter_map(|e| e.ok())
         .find_map(|e| {
             let path = e.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("gguf") {
+            let filename = path.file_name()?.to_str()?;
+            if path.extension().and_then(|s| s.to_str()) == Some("gguf")
+                && !filename.starts_with("mmproj-")
+            {
                 Some(path)
             } else {
                 None
