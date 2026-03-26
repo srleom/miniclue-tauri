@@ -35,10 +35,6 @@ On first build, `src-tauri/build.rs` downloads required Pdfium binaries automati
 - Quick start: `docs/users/getting-started.md`
 - Using MiniClue: `docs/users/using-miniclue.md`
 
-Additional references:
-
-- Troubleshooting and deep FAQ: `FAQ.md`
-
 ## Contributing
 
 - Contribution guide: `CONTRIBUTING.md`
